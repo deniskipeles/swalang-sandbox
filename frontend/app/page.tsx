@@ -15,6 +15,7 @@ export default function Playground() {
   const [activeFile, setActiveFile] = useState("main.sw");
 
   async function uploadFiles() {
+    if (!session) return;
     for (const path in files) {
       await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/session/${session.id}/files`, {
         method: "POST",
