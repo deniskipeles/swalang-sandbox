@@ -1,14 +1,16 @@
+// =========================== swalang-sandbox/cmd/server/main.go ===========================
 package main
 
 import (
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"swalang-api-dualmode/internal/api"
 	"time"
-	"io/ioutil"
-	"path/filepath"
 
+	"github.com/gorilla/handlers" // <-- Import the handlers package
 	"github.com/gorilla/mux"
 )
 
@@ -28,9 +30,20 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
+	
+	// === CORS Configuration ===
+	// Define the allowed origins. You should make this more restrictive in production.
+	allowedOrigins := handlers.AllowedOrigins([]string{"https://swalang-sandbox.vercel.app", "http://localhost:3000"})
+	allowedMethods := handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS"})
+	allowedHeaders := handlers.AllowedHeaders([]string{"Content-Type", "X-Requested-With"})
+
+	// Wrap the router with the CORS middleware
+	corsHandler := handlers.CORS(allowedOrigins, allowedMethods, allowedHeaders)(r)
+	// === End CORS Configuration ===
 
 	srv := &http.Server{
-		Handler:      r,
+		// Use the corsHandler instead of the raw router 'r'
+		Handler:      corsHandler,
 		Addr:         ":" + port,
 		WriteTimeout: 15 * time.Second,
 		ReadTimeout:  15 * time.Second,
@@ -42,6 +55,7 @@ func main() {
 	log.Printf("Server starting on port %s", port)
 	log.Fatal(srv.ListenAndServe())
 }
+
 
 func startCleanupWorker() {
 	sessionDir := os.Getenv("SESSION_DIR")

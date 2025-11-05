@@ -43,7 +43,7 @@ export default function Playground() {
     }
   }
 
-  //if (!session) return <div>Loading session...</div>;
+  if (!session) return <div>Loading session...</div>;
 
   return (
     <main className="flex flex-col h-screen">
