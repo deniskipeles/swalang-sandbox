@@ -1,13 +1,9 @@
 import { useEffect, useState } from "react";
 
 export function useSession() {
-  const [session, setSession] = useState<{ id: string, ws_url: string } | null>(null);
+  const [session, setSession] = useState<{ session_id: string, ws_url: string } | null>(null);
 
   useEffect(() => {
-    // NOTE: The backend API at https://swalang-api.onrender.com/api/session/new
-    // is currently returning a 404 Not Found error.
-    // This code is correct according to the API guide, but will not work
-    // until the backend is fixed.
     fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/session/new`, {
       method: "POST",
     })

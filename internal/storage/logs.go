@@ -5,12 +5,11 @@ import (
 	"path/filepath"
 )
 
-var logBaseDir = "/var/log/swalang"
+var logBaseDir = os.Getenv("SESSION_DIR")
 
 func init() {
-	if err := os.MkdirAll(logBaseDir, 0755); err != nil {
-		// In a real application, you'd want to handle this more gracefully.
-		panic("could not create log directory: " + err.Error())
+	if logBaseDir == "" {
+		logBaseDir = "/tmp/swalang_sessions"
 	}
 }
 
