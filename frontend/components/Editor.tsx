@@ -4,7 +4,13 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
-export default function Editor({ files, activeFile, onChange }) {
+interface EditorProps {
+  files: Record<string, string>;
+  activeFile: string;
+  onChange: (path: string, content: string) => void;
+}
+
+export default function Editor({ files, activeFile, onChange }: EditorProps) {
   return (
     <MonacoEditor
       height="60vh"
