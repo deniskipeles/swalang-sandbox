@@ -1,10 +1,4 @@
-interface FileTreeProps {
-  files: Record<string, string>;
-  onSelect: (path: string) => void;
-  active: string;
-}
-
-export default function FileTree({ files, onSelect, active }: FileTreeProps) {
+export default function FileTree({ files, onSelect, active }) {
   return (
     <div className="p-2 text-sm border-r">
       {Object.keys(files).map((path) => (

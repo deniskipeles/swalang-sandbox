@@ -11,11 +11,10 @@ import ThemeToggle from "@/components/ThemeToggle";
 export default function Playground() {
   const session = useSession();
   const { messages, runCode } = useWebSocket(session?.ws_url);
-  const [files, setFiles] = useState<Record<string, string>>({ "main.sw": "print('Hello Swalang!')" });
+  const [files, setFiles] = useState({ "main.sw": "print('Hello Swalang!')" });
   const [activeFile, setActiveFile] = useState("main.sw");
 
   async function uploadFiles() {
-    if (!session) return;
     for (const path in files) {
       await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/session/${session.id}/files`, {
         method: "POST",
