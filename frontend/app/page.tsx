@@ -17,7 +17,7 @@ export default function Playground() {
   async function uploadFiles() {
     if (!session) return;
     for (const path in files) {
-      await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/session/${session.id}/files`, {
+      await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/api/session/${session.session_id}/files`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path, content: files[path] }),
