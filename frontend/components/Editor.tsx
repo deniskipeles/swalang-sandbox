@@ -1,0 +1,17 @@
+"use client";
+
+import { useState } from "react";
+import dynamic from "next/dynamic";
+const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
+
+export default function Editor({ files, activeFile, onChange }) {
+  return (
+    <MonacoEditor
+      height="60vh"
+      language="python" // until Swalang syntax highlighting is ready
+      value={files[activeFile] || ""}
+      theme="vs-dark"
+      onChange={(v) => onChange(activeFile, v || "")}
+    />
+  );
+}
