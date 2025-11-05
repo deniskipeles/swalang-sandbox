@@ -1,13 +1,13 @@
 package main
 
 import (
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"swalang-api-dualmode/internal/api"
 	"time"
-	"io/ioutil"
-	"path/filepath"
 
 	"github.com/gorilla/mux"
 )
@@ -17,6 +17,7 @@ func main() {
 
 	// API routes
 	apiRouter := r.PathPrefix("/api").Subrouter()
+	apiRouter.Use(api.RateLimiter)
 	apiRouter.HandleFunc("/session/new", api.NewSessionHandler).Methods("POST")
 	apiRouter.HandleFunc("/session/{id}/files", api.UploadFileHandler).Methods("POST")
 	apiRouter.HandleFunc("/session/{id}/run", api.RunHandler).Methods("POST")
