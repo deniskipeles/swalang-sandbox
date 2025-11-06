@@ -9,13 +9,17 @@ export function useWebSocket(wsUrl?: string) {
     ws.current = new WebSocket(wsUrl);
     ws.current.onmessage = (ev) => {
       const data = JSON.parse(ev.data);
-      setMessages(prev => [...prev, data.stdout || data.stderr || data.error]);
+
+      // Check for the 'content' property ---
+      if (data.content) {
+        setMessages(prev => [...prev, data.content]);
+      }
     };
     return () => ws.current?.close();
   }, [wsUrl]);
 
   function runCode() {
-    setMessages([]);
+    setMessages([]); // This correctly clears the console before a new run
     ws.current?.send(JSON.stringify({ action: "run" }));
   }
 
