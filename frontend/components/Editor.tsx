@@ -12,12 +12,13 @@ interface EditorProps {
 
 export default function Editor({ files, activeFile, onChange }: EditorProps) {
   return (
-    <MonacoEditor
-      height="60vh"
-      language="python" // until Swalang syntax highlighting is ready
-      value={files[activeFile] || ""}
-      theme="vs-dark"
-      onChange={(v) => onChange(activeFile, v || "")}
-    />
+    <div className="flex-1">
+      <MonacoEditor
+        language="python" // until Swalang syntax highlighting is ready
+        value={files[activeFile] || ""}
+        theme="vs-dark"
+        onChange={(v) => onChange(activeFile, v || "")}
+      />
+    </div>
   );
 }
