@@ -3,11 +3,9 @@ package main
 
 import (
 	"context"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"swalang-api-dualmode/internal/api"
 	"time"
 
