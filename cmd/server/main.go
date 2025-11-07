@@ -2,19 +2,42 @@
 package main
 
 import (
-	"io/ioutil"
+	"context"
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"swalang-api-dualmode/internal/api"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/gorilla/handlers" // <-- Import the handlers package
 	"github.com/gorilla/mux"
 )
 
+var rdb *redis.Client
+
 func main() {
+	// Initialize Redis client
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		redisURL = "redis://localhost:6379"
+	}
+	opt, err := redis.ParseURL(redisURL)
+	if err != nil {
+		log.Fatalf("Could not parse Redis URL: %v", err)
+	}
+	rdb = redis.NewClient(opt)
+
+	// Check Redis connection
+	ctx := context.Background()
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Could not connect to Redis: %v", err)
+	}
+	log.Println("Connected to Redis successfully")
+
+	// Pass the redis client to the api package
+	api.SetRedisClient(rdb)
+
 	r := mux.NewRouter()
 
 	// API routes
@@ -30,10 +53,10 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	
+
 	// === CORS Configuration ===
 	// Define the allowed origins. You should make this more restrictive in production.
-	allowedOrigins := handlers.AllowedOrigins([]string{"https://swalang-sandbox.vercel.app", "http://localhost:3000"})
+	allowedOrigins := handlers.AllowedOrigins([]string{"*"})
 	allowedMethods := handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS"})
 	allowedHeaders := handlers.AllowedHeaders([]string{"Content-Type", "X-Requested-With"})
 
@@ -49,47 +72,6 @@ func main() {
 		ReadTimeout:  15 * time.Second,
 	}
 
-	// Start the cleanup worker
-	go startCleanupWorker()
-
 	log.Printf("Server starting on port %s", port)
 	log.Fatal(srv.ListenAndServe())
-}
-
-
-func startCleanupWorker() {
-	sessionDir := os.Getenv("SESSION_DIR")
-	if sessionDir == "" {
-		sessionDir = "/tmp/swalang_sessions"
-	}
-
-	cleanupInterval := 5 * time.Minute // Clean up every 5 minutes
-	sessionTTL := 15 * time.Minute      // Sessions older than 15 minutes are removed
-
-	ticker := time.NewTicker(cleanupInterval)
-	defer ticker.Stop()
-
-	for {
-		<-ticker.C
-		log.Println("Running session cleanup...")
-		cleanupOldSessions(sessionDir, sessionTTL)
-	}
-}
-
-func cleanupOldSessions(dir string, ttl time.Duration) {
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		log.Printf("Error reading session directory for cleanup: %v", err)
-		return
-	}
-
-	for _, file := range files {
-		if file.IsDir() {
-			sessionPath := filepath.Join(dir, file.Name())
-			if time.Since(file.ModTime()) > ttl {
-				log.Printf("Removing old session: %s", sessionPath)
-				os.RemoveAll(sessionPath)
-			}
-		}
-	}
 }
