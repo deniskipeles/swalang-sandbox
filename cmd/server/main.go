@@ -18,12 +18,12 @@ var rdb *redis.Client
 
 func main() {
 	// Initialize Redis client
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		redisURL = "localhost:6379"
 	}
 	rdb = redis.NewClient(&redis.Options{
-		Addr: redisAddr,
+		Addr: redisURL,
 	})
 
 	// Check Redis connection
