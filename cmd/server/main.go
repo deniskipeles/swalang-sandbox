@@ -20,11 +20,13 @@ func main() {
 	// Initialize Redis client
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {
-		redisURL = "localhost:6379"
+		redisURL = "redis://localhost:6379"
 	}
-	rdb = redis.NewClient(&redis.Options{
-		Addr: redisURL,
-	})
+	opt, err := redis.ParseURL(redisURL)
+	if err != nil {
+		log.Fatalf("Could not parse Redis URL: %v", err)
+	}
+	rdb = redis.NewClient(opt)
 
 	// Check Redis connection
 	ctx := context.Background()
