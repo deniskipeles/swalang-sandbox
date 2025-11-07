@@ -25,7 +25,6 @@ var upgrader = websocket.Upgrader{
 func HandleWS(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	sessionID := vars["id"]
-	sessionDir := filepath.Join(sessionBaseDir, sessionID)
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -44,12 +43,36 @@ func HandleWS(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if action, ok := msg["action"]; ok && action == "run" {
-			executeAndStream(conn, sessionDir)
+			executeAndStream(conn, sessionID)
 		}
 	}
 }
 
-func executeAndStream(conn *websocket.Conn, sessionDir string) {
+func executeAndStream(conn *websocket.Conn, sessionID string) {
+	ctx := context.Background()
+
+	// Retrieve the code from Redis
+	code, err := rdb.HGet(ctx, "session:"+sessionID, "file:main.sw").Result()
+	if err != nil {
+		sendJSONError(conn, "Failed to retrieve code from session", err)
+		return
+	}
+
+	// Create a temporary directory for execution
+	tempDir, err := os.MkdirTemp("", "swalang-exec-*")
+	if err != nil {
+		sendJSONError(conn, "Failed to create execution directory", err)
+		return
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Write the code to a temporary file
+	entrypointPath := filepath.Join(tempDir, "main.sw")
+	if err := os.WriteFile(entrypointPath, []byte(code), 0644); err != nil {
+		sendJSONError(conn, "Failed to write code to file", err)
+		return
+	}
+
 	binPath := os.Getenv("SWALANG_PATH")
 	if binPath == "" {
 		binPath = "swalang" // Default path
@@ -60,7 +83,7 @@ func executeAndStream(conn *websocket.Conn, sessionDir string) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binPath, entryFile)
-	cmd.Dir = sessionDir
+	cmd.Dir = tempDir
 
 	stdoutPipe, _ := cmd.StdoutPipe()
 	stderrPipe, _ := cmd.StderrPipe()
@@ -77,7 +100,7 @@ func executeAndStream(conn *websocket.Conn, sessionDir string) {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			// The process exited with a non-zero status code, which is not necessarily an API error.
 			// The stderr stream will have already sent the error message.
-			log.Printf("Execution finished with non-zero status for %s: %s", sessionDir, exitErr)
+			log.Printf("Execution finished with non-zero status for %s: %s", sessionID, exitErr)
 		} else {
 			// An actual error occurred while waiting for the command to finish.
 			sendJSONError(conn, "Execution failed", err)
