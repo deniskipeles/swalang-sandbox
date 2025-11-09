@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swalang Sandbox</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; }
+        #editor { width: 100%; min-height: 200px; font-family: monospace; }
+        #runButton { padding: 10px 20px; font-size: 16px; margin-top: 10px; }
+        #console { background-color: #f0f0f0; border: 1px solid #ccc; padding: 10px; min-height: 100px; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>Swalang Dummy Editor</h1>
+    <textarea id="editor">print("Hello from the browser!")</textarea>
+    <br>
+    <button id="runButton">Run</button>
+    <h2>Console</h2>
+    <pre id="console"></pre>
+    <script>
+        const editor = document.getElementById('editor');
+        const runButton = document.getElementById('runButton');
+        const consoleOutput = document.getElementById('console');
+
+        runButton.addEventListener('click', async () => {
+            consoleOutput.textContent = 'Executing...';
+            runButton.disabled = true;
+
+            try {
+                // 1. Create a new session
+                const sessionRes = await fetch('/api/session/new', { method: 'POST' });
+                if (!sessionRes.ok) {
+                    throw new Error(`Failed to create session: ${sessionRes.status} ${sessionRes.statusText}`);
+                }
+                const sessionData = await sessionRes.json();
+                const sessionId = sessionData.session_id;
+
+                // 2. Upload the file
+                const code = editor.value;
+                const uploadRes = await fetch(`/api/session/${sessionId}/files`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: 'main.sw', content: code })
+                });
+                if (!uploadRes.ok) {
+                    throw new Error(`Failed to upload file: ${uploadRes.status} ${uploadRes.statusText}`);
+                }
+
+                // 3. Run the code
+                const runRes = await fetch(`/api/session/${sessionId}/run`, { method: 'POST' });
+                 if (!runRes.ok) {
+                    const errorText = await runRes.text();
+                    throw new Error(`Failed to run code: ${runRes.status} ${runRes.statusText} - ${errorText}`);
+                }
+                const runData = await runRes.json();
+
+                // 4. Display the output
+                let output = '';
+                if (runData.Stdout) {
+                    output += `Stdout:\n${runData.Stdout}\n`;
+                }
+                if (runData.Stderr) {
+                    output += `Stderr:\n${runData.Stderr}\n`;
+                }
+                 consoleOutput.textContent = output || 'Execution finished with no output.';
+
+            } catch (error) {
+                consoleOutput.textContent = `Error: ${error.message}`;
+            } finally {
+                runButton.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
