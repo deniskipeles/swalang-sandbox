@@ -5,10 +5,11 @@ COPY . .
 RUN go mod tidy
 RUN go build -o server ./cmd/server
 
-# Copy the Swalang binary built on your host
+# Install libffi runtime
+RUN apt-get update && apt-get install -y libffi7 || apt-get install -y libffi8
+
 COPY ./swalang /usr/local/bin/swalang
 RUN chmod +x /usr/local/bin/swalang
 
 EXPOSE 8080
 CMD ["./server"]
-
