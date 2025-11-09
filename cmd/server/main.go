@@ -1,6 +1,3 @@
-// =========================== swalang-sandbox/cmd/server/main.go ===========================
-package main
-
 import (
 	"context"
 	"log"
@@ -62,7 +59,8 @@ func main() {
 
 	// === CORS Configuration ===
 	// Define the allowed origins. You should make this more restrictive in production.
-	allowedOrigins := handlers.AllowedOrigins([]string{"*"})
+	// allowedOrigins := handlers.AllowedOrigins([]string{"*"})
+	allowedOrigins := handlers.AllowedOrigins([]string{"https://swalang-sandbox.vercel.app"})
 	allowedMethods := handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS"})
 	allowedHeaders := handlers.AllowedHeaders([]string{"Content-Type", "X-Requested-With"})
 
