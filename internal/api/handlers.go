@@ -119,7 +119,7 @@ func RunHandler(w http.ResponseWriter, r *http.Request) {
 
 	binPath := os.Getenv("SWALANG_PATH") 
 	if binPath == "" {
-		binPath = "./swalang" // Default path
+		binPath = "/usr/local/bin/swalang" // Default path
 	}
 
 	maxExecutionTimeStr := os.Getenv("MAX_EXECUTION_TIME")
