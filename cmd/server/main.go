@@ -40,6 +40,11 @@ func main() {
 
 	r := mux.NewRouter()
 
+	// Serve the index.html file on the root route
+	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/index.html")
+	})
+
 	// API routes
 	apiRouter := r.PathPrefix("/api").Subrouter()
 	apiRouter.HandleFunc("/session/new", api.NewSessionHandler).Methods("POST")

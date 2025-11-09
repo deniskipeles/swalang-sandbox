@@ -162,3 +162,44 @@ func TestLogsHandler(t *testing.T) {
 			body, "hello")
 	}
 }
+
+func TestServeIndex(t *testing.T) {
+	// Create a temporary directory for static files
+	tmpDir, err := os.MkdirTemp("", "static")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create a dummy index.html file in the temp dir
+	tmpFile := filepath.Join(tmpDir, "index.html")
+	if err := os.WriteFile(tmpFile, []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	req, err := http.NewRequest("GET", "/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+
+	// This test simulates the handler defined in main.go
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, tmpFile)
+	}
+
+	router := mux.NewRouter()
+	router.HandleFunc("/", handler)
+	router.ServeHTTP(rr, req)
+
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("handler returned wrong status code: got %v want %v",
+			status, http.StatusOK)
+	}
+
+	if body := rr.Body.String(); body != "hello" {
+		t.Errorf("handler returned unexpected body: got %v want %v",
+			body, "hello")
+	}
+}
