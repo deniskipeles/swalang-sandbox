@@ -5,27 +5,137 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Swalang Sandbox</title>
     <style>
-        body { font-family: sans-serif; margin: 2em; }
-        #editor { width: 100%; min-height: 200px; font-family: monospace; }
-        #runButton { padding: 10px 20px; font-size: 16px; margin-top: 10px; }
-        #console { background-color: #f0f0f0; border: 1px solid #ccc; padding: 10px; min-height: 100px; white-space: pre-wrap; }
+        :root {
+            --background-color: #1a1a1a;
+            --text-color: #e0e0e0;
+            --primary-color: #007acc;
+            --editor-bg: #252526;
+            --console-bg: #1e1e1e;
+            --border-color: #333;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        header {
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        main {
+            display: flex;
+            flex: 1;
+            padding: 1rem;
+            gap: 1rem;
+        }
+        .editor-container, .console-container {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 0;
+        }
+        label {
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+        textarea, pre {
+            flex: 1;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+            padding: 1rem;
+            font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            color: var(--text-color);
+        }
+        #editor {
+            background-color: var(--editor-bg);
+            resize: none;
+        }
+        #console {
+            background-color: var(--console-bg);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        #runButton {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            margin-top: 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.2s;
+        }
+        #runButton:hover:not(:disabled) {
+            background-color: #005f99;
+        }
+        #runButton:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+        /* Loader styles */
+        #loader {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary-color);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        .loader-hidden {
+            display: none;
+        }
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        /* Mobile styles */
+        @media (max-width: 768px) {
+            main {
+                flex-direction: column;
+            }
+            header h1 {
+                font-size: 1.5rem;
+            }
+        }
     </style>
 </head>
 <body>
-    <h1>Swalang Dummy Editor</h1>
-    <textarea id="editor">print("Hello from the browser!")</textarea>
-    <br>
-    <button id="runButton">Run</button>
-    <h2>Console</h2>
-    <pre id="console"></pre>
+    <header>
+        <h1>Swalang Sandbox</h1>
+    </header>
+    <main>
+        <div class="editor-container">
+            <label for="editor">Code Editor</label>
+            <textarea id="editor" spellcheck="false">print("Hello from Swalang!")</textarea>
+            <button id="runButton">Run Code</button>
+        </div>
+        <div class="console-container">
+            <label for="console">Console</label>
+            <pre id="console">Click "Run Code" to see the output.</pre>
+        </div>
+    </main>
+    <div id="loader" class="loader-hidden"></div>
     <script>
         const editor = document.getElementById('editor');
         const runButton = document.getElementById('runButton');
         const consoleOutput = document.getElementById('console');
+        const loader = document.getElementById('loader');
 
         runButton.addEventListener('click', async () => {
-            consoleOutput.textContent = 'Executing...';
+            consoleOutput.textContent = '';
             runButton.disabled = true;
+            loader.classList.remove('loader-hidden');
 
             try {
                 // 1. Create a new session
@@ -49,7 +159,7 @@
 
                 // 3. Run the code
                 const runRes = await fetch(`/api/session/${sessionId}/run`, { method: 'POST' });
-                 if (!runRes.ok) {
+                if (!runRes.ok) {
                     const errorText = await runRes.text();
                     throw new Error(`Failed to run code: ${runRes.status} ${runRes.statusText} - ${errorText}`);
                 }
@@ -63,12 +173,13 @@
                 if (runData.Stderr) {
                     output += `Stderr:\n${runData.Stderr}\n`;
                 }
-                 consoleOutput.textContent = output || 'Execution finished with no output.';
+                consoleOutput.textContent = output || 'Execution finished with no output.';
 
             } catch (error) {
                 consoleOutput.textContent = `Error: ${error.message}`;
             } finally {
                 runButton.disabled = false;
+                loader.classList.add('loader-hidden');
             }
         });
     </script>

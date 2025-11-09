@@ -58,7 +58,7 @@ func TestUploadFileHandler(t *testing.T) {
 	s.HSet("session:"+sessionID, "status", "created")
 
 	body := `{"path": "main.sw", "content": "print(\"hello\")"}`
-	req, err := http.NewRequest("POST", "/api/session/"+sessionID+"/upload", strings.NewReader(body))
+	req, err := http.NewRequest("POST", "/api/session/"+sessionID+"/files", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestUploadFileHandler(t *testing.T) {
 
 	// Create a router and add the handler to it to test mux.Vars
 	router := mux.NewRouter()
-	router.HandleFunc("/api/session/{id}/upload", handler)
+	router.HandleFunc("/api/session/{id}/files", handler)
 	router.ServeHTTP(rr, req)
 
 	if status := rr.Code; status != http.StatusCreated {
