@@ -10,13 +10,18 @@ export function useSession() {
       .then(res => {
         if (!res.ok) {
           console.error("Failed to create session:", res.status, res.statusText);
+          res.text().then(text => console.error("Response body:", text));
           return null;
         }
         return res.json()
       })
       .then(data => {
         if (data) {
-          setSession(data)
+          console.log("Session data:", data);
+          setSession({
+            ...data,
+            ws_url: `${process.env.NEXT_PUBLIC_WS_BASE}${data.ws_url}`
+          })
         }
       });
   }, []);
