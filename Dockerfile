@@ -18,11 +18,9 @@ RUN chmod +x /usr/local/bin/swalang
 
 # Reconstruct the Astra bundle *safely* at runtime
 ENTRYPOINT ["/bin/sh", "-c", "\
-  echo '🔐 Exporting environment variables from .env...'; \
-  if [ -f .env ]; then export $(grep -v '^#' .env | xargs); fi; \
   echo '🔐 Reconstructing Astra secure bundle...'; \
   CLEAN=$(printf \"%s\" \"$SECURE_BUNDLE_B64\" | tr -d '\\n\\r '); \
   printf \"%s\" \"$CLEAN\" | base64 -d > /app/secure-connect-swalang-codebase.zip || { echo '❌ Base64 decode failed'; exit 1; }; \
+  echo '✅ Bundle restored to /app/secure-connect-swalang-codebase.zip'; \
   exec ./server \
 "]
-

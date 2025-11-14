@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import TreeView from '@/components/TreeView';
 import Editor from '@/components/Editor';
 import Console from '@/components/Console';
@@ -13,6 +14,7 @@ import type { FileSystemNode as ApiFileSystemNode } from "@/lib/astra";
 import { MenuIcon } from '@/components/icons/MenuIcon';
 import { SaveIcon } from '@/components/icons/SaveIcon';
 import { PreviewIcon } from '@/components/icons/PreviewIcon';
+import { EditIcon } from '@/components/icons/EditIcon'; // Import the new icon
 
 /* --- Helper Functions --- */
 
@@ -43,31 +45,21 @@ const findParentId = (nodes: FileSystemNode[], childId: string): string | null =
     return null;
 };
 
-// ====================================================================================
-// === THIS IS THE CORRECTED FUNCTION that fixes the empty tree view bug =============
-// ====================================================================================
 const buildTreeFromSplitList = (apiNodes: ApiFileSystemNode[]): FileSystemNode[] => {
   const root: Folder = { id: 'root', name: 'root', type: 'folder', children: [] };
   const map = new Map<string, FileSystemNode>([['', root]]);
 
-  // Create all necessary directories first from the paths of all nodes
   apiNodes.forEach(node => {
     const path = node.name;
     const parts = path.split('/');
     let currentParentPath = '';
     
-    // Iterate through path parts to create folders
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
       const newPath = currentParentPath ? `${currentParentPath}/${part}` : part;
       if (!map.has(newPath)) {
         const parentNode = map.get(currentParentPath)! as Folder;
-        const newFolder: Folder = {
-          id: newPath,
-          name: part,
-          type: 'folder',
-          children: [],
-        };
+        const newFolder: Folder = { id: newPath, name: part, type: 'folder', children: [] };
         parentNode.children.push(newFolder);
         map.set(newPath, newFolder);
       }
@@ -75,32 +67,19 @@ const buildTreeFromSplitList = (apiNodes: ApiFileSystemNode[]): FileSystemNode[]
     }
   });
 
-  // Now, place all the files and explicit folders into the created structure
   apiNodes.forEach(node => {
     const path = node.name;
     const parts = path.split('/');
     const fileName = parts[parts.length - 1];
     const parentPath = parts.slice(0, -1).join('/');
-
     const parentNode = map.get(parentPath)! as Folder;
 
-    // Check if a node for this path was already implicitly created as a folder
     if (!map.has(path)) {
         let newNode: FileSystemNode;
         if (node.isFolder) {
-            newNode = {
-                id: path,
-                name: fileName,
-                type: 'folder', // Type is explicitly 'folder'
-                children: []
-            };
+            newNode = { id: path, name: fileName, type: 'folder', children: [] };
         } else {
-            newNode = {
-                id: path,
-                name: fileName,
-                type: 'file', // Type is explicitly 'file'
-                content: ''  // Content is an empty string, to be loaded on demand
-            };
+            newNode = { id: path, name: fileName, type: 'file', content: '' };
         }
       parentNode.children.push(newNode);
       map.set(path, newNode);
@@ -137,6 +116,7 @@ interface ProjectIDEProps {
 }
 
 const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTree, initialFiles }) => {
+  const router = useRouter();
   const [fileSystem, setFileSystem] = useState<FileSystemNode[]>(() => {
     if (strategy === 'fat' && initialTree) return initialTree;
     if (strategy === 'split' && initialFiles) return buildTreeFromSplitList(initialFiles);
@@ -163,7 +143,7 @@ const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTre
   const [dirtyFileIds, setDirtyFileIds] = useState<Set<string>>(new Set());
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [consoleLogs, setConsoleLogs] = useState<string[]>([`Project ${projectId} loaded with '${strategy}' strategy.`]);
+  const [consoleLogs, setConsoleLogs] = useState<string[]>([`Project ${projectId} loaded.`]);
   const [isSidebarVisible, setSidebarVisible] = useState<boolean>(true);
   const [isPreviewVisible, setPreviewVisible] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -171,6 +151,7 @@ const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTre
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingContent, setIsLoadingContent] = useState<boolean>(false);
+  const [isEditingMode, setIsEditingMode] = useState(false); // New state for editing mode
 
   const openFiles = useMemo(() => [...openFileIds].map(id => findFileById(fileSystem, id)).filter((f): f is File => f !== null), [openFileIds, fileSystem]);
   const activeFile = useMemo(() => activeFileId ? findFileById(fileSystem, activeFileId) : null, [activeFileId, fileSystem]);
@@ -196,21 +177,42 @@ const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTre
   }, []);
 
   const handleFileSelect = useCallback(async (file: File) => {
-    setOpenFileIds(prev => new Set(prev).add(file.id));
-    setActiveFileId(file.id);
-    setSelectedNodeId(file.id);
-    if (strategy === 'split' && fileContents[file.id] === undefined) {
-      setIsLoadingContent(true);
-      try {
-        const content = await getFileContent(projectId, file.id);
-        setFileContents(prev => ({ ...prev, [file.id]: content }));
-      } catch (e) {
-        setFileContents(prev => ({ ...prev, [file.id]: `// Error loading file` }));
-      } finally {
-        setIsLoadingContent(false);
+    const findPathById = (nodes: FileSystemNode[], nodeId: string, currentPath = ''): string | null => {
+        for (const node of nodes) {
+            const path = currentPath ? `${currentPath}/${node.name}` : node.name;
+            if (node.id === nodeId) return path;
+            if (node.type === 'folder') {
+                const result = findPathById(node.children, nodeId, path);
+                if (result) return result;
+            }
+        }
+        return null;
+    };
+    const filePath = strategy === 'fat' ? findPathById(fileSystem, file.id) : file.id;
+
+    if (isEditingMode) {
+      // In-place editing logic
+      setOpenFileIds(prev => new Set(prev).add(file.id));
+      setActiveFileId(file.id);
+      setSelectedNodeId(file.id);
+      if (strategy === 'split' && fileContents[file.id] === undefined) {
+        setIsLoadingContent(true);
+        try {
+          const content = await getFileContent(projectId, filePath!);
+          setFileContents(prev => ({ ...prev, [file.id]: content }));
+        } catch (e) {
+          setFileContents(prev => ({ ...prev, [file.id]: `// Error loading file` }));
+        } finally {
+          setIsLoadingContent(false);
+        }
+      }
+    } else {
+      // Default SEO-friendly navigation
+      if (filePath) {
+        router.push(`/project/${projectId}/file/${filePath}`);
       }
     }
-  }, [strategy, projectId, fileContents]);
+  }, [isEditingMode, strategy, projectId, fileContents, router, fileSystem]);
 
   const handleContentChange = useCallback((content: string) => {
     if (activeFileId) {
@@ -300,8 +302,20 @@ const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTre
     <div className="h-screen w-screen bg-gray-100 dark:bg-gray-800 flex flex-col font-sans">
       <div className="hidden md:flex flex-1 overflow-hidden">
         <div className={`transition-all duration-300 ${isSidebarVisible ? 'w-64' : 'w-0'} bg-gray-50 dark:bg-gray-800 flex flex-col`}>
+            <div className="flex justify-between items-center p-2 border-b border-gray-200 dark:border-gray-700">
+                <h2 className="text-lg font-semibold">Explorer</h2>
+                <div className="flex items-center space-x-1">
+                    <button
+                      onClick={() => setIsEditingMode(!isEditingMode)}
+                      title={isEditingMode ? "Switch to Navigation Mode" : "Switch to In-Place Editing Mode"}
+                      className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 ${isEditingMode ? 'bg-blue-200 dark:bg-blue-800' : ''}`}
+                    >
+                      <EditIcon />
+                    </button>
+                </div>
+            </div>
           <div className="flex-1 overflow-y-auto">
-            <TreeView data={fileSystem} onFileSelect={handleFileSelect} activeFileId={activeFileId} renamingId={renamingId} onStartRename={setRenamingId} onCancelRename={() => setRenamingId(null)} onRenameNode={handleRenameNode} onNewFile={() => handleCreateNode('file')} onNewFolder={() => handleCreateNode('folder')} onNodeSelect={setSelectedNodeId} selectedNodeId={selectedNodeId} onDeleteNode={handleDeleteNode} onCopyNode={() => { /* copy not implemented */ }} />
+            <TreeView data={fileSystem} onFileSelect={handleFileSelect} activeFileId={activeFileId} renamingId={renamingId} onStartRename={setRenamingId} onCancelRename={() => setRenamingId(null)} onRenameNode={handleRenameNode} onNewFile={() => handleCreateNode('file')} onNewFolder={() => handleCreateNode('folder')} onNodeSelect={setSelectedNodeId} selectedNodeId={selectedNodeId} onDeleteNode={handleDeleteNode} onCopyNode={() => {}} />
           </div>
         </div>
         <main className="flex-1 flex flex-col min-w-0">

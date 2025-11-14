@@ -431,10 +431,13 @@ func projectSize(projectID string) (int, error) {
 
 func loadFat(projectID string) []FileSystemNode {
 	var raw string
-	err := session.Query(`SELECT snapshot FROM project_snapshots WHERE project_id = ? LIMIT 1`, projectID).
+	// FIX: Add an explicit "ORDER BY version DESC" to guarantee the latest snapshot is returned.
+	err := session.Query(`SELECT snapshot FROM project_snapshots WHERE project_id = ? ORDER BY version DESC LIMIT 1`, projectID).
 		Consistency(gocql.One).
 		Scan(&raw)
 	if err != nil {
+		// It's helpful to log the error here if you have a logger configured
+		// log.Printf("Failed to load fat project %s: %v", projectID, err)
 		return nil
 	}
 	var tree []FileSystemNode

@@ -19,6 +19,7 @@ export async function getProject(id: string): Promise<{
   if (!res.ok) throw new Error("Project not found");
   // FIX: Wait for the JSON promise to resolve
   const data = await res.json();
+  console.log(data)
   return  data
 }
 

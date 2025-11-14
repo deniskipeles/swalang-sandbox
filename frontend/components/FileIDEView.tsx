@@ -47,11 +47,11 @@ const buildTreeFromSplitList = (apiNodes: any[]): FileSystemNode[] => {
     return fileTree;
 };
 
-const findFileByPath = (nodes: FileSystemNode[], path: string): File | null => {
+const findFileById = (nodes: FileSystemNode[], id: string): File | null => {
     for (const node of nodes) {
-        if (node.type === 'file' && node.id === path) return node;
+        if (node.type === 'file' && node.id === id) return node;
         if (node.type === 'folder') {
-            const found = findFileByPath(node.children, path);
+            const found = findFileById(node.children, id);
             if (found) return found;
         }
     }
@@ -82,8 +82,8 @@ export default function FileIDEView({ projectId, initialProject, activeFilePath,
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [webSocket, setWebSocket] = useState<WebSocket | null>(null);
 
-    const openFiles = useMemo(() => [...openFileIds].map(id => findFileByPath(fileSystem, id)).filter((f): f is File => f !== null), [openFileIds, fileSystem]);
-    const activeFile = useMemo(() => activeFileId ? findFileByPath(fileSystem, activeFileId) : null, [activeFileId, fileSystem]);
+    const openFiles = useMemo(() => [...openFileIds].map(id => findFileById(fileSystem, id)).filter((f): f is File => f !== null), [openFileIds, fileSystem]);
+    const activeFile = useMemo(() => activeFileId ? findFileById(fileSystem, activeFileId) : null, [activeFileId, fileSystem]);
 
     useEffect(() => {
         let ws: WebSocket | null = null;
@@ -103,24 +103,42 @@ export default function FileIDEView({ projectId, initialProject, activeFilePath,
     }, []);
 
     const handleFileSelect = useCallback(async (file: File) => {
-        const filePath = file.id; // The ID in this context is the full path
-        if (fileContents[filePath] === undefined) {
+        const findPathById = (nodes: FileSystemNode[], nodeId: string, currentPath = ''): string | null => {
+            for (const node of nodes) {
+                const newPath = currentPath ? `${currentPath}/${node.name}` : node.name;
+                if (node.id === nodeId) {
+                    return newPath;
+                }
+                if (node.type === 'folder') {
+                    const result = findPathById(node.children, nodeId, newPath);
+                    if (result) return result;
+                }
+            }
+            return null;
+        };
+
+        const filePath = initialProject.strategy === 'split' ? file.id : findPathById(fileSystem, file.id);
+
+        if (!filePath) {
+            console.error("Could not determine file path for ID:", file.id);
+            return;
+        }
+
+        // Use the unique file.id for state management, but the calculated filePath for APIs and navigation.
+        if (fileContents[file.id] === undefined) {
             try {
                 const content = await getFileContent(projectId, filePath);
-                setFileContents(prev => ({ ...prev, [filePath]: content }));
+                setFileContents(prev => ({ ...prev, [file.id]: content }));
             } catch (error) {
-                setFileContents(prev => ({ ...prev, [filePath]: "// Error loading content" }));
+                setFileContents(prev => ({ ...prev, [file.id]: "// Error loading content" }));
             }
         }
-        setOpenFileIds(prev => new Set(prev).add(filePath));
-        setActiveFileId(filePath);
-        // Update the browser's URL without a full page reload
+        setOpenFileIds(prev => new Set(prev).add(file.id));
+        setActiveFileId(file.id);
         router.push(`/project/${projectId}/file/${filePath}`, { scroll: false });
-    }, [projectId, fileContents, router]);
+    }, [projectId, fileContents, router, fileSystem, initialProject.strategy]);
 
     const handleRunCode = useCallback(async () => {
-        // This logic can be expanded, but for now, it runs the *active* file.
-        // A more complex implementation might run a designated "main" file.
         if (!webSocket || !sessionId || !activeFile) return;
         setIsExecuting(true);
         setConsoleLogs(['Uploading and running...']);
@@ -149,10 +167,13 @@ export default function FileIDEView({ projectId, initialProject, activeFilePath,
                         data={fileSystem}
                         onFileSelect={handleFileSelect}
                         activeFileId={activeFileId}
-                        // Other props can be set to disable functionality not needed in this view
                         renamingId={null} onStartRename={()=>{}} onCancelRename={()=>{}}
                         onRenameNode={()=>{}} onNewFile={()=>{}} onNewFolder={()=>{}}
-                        onNodeSelect={(id) => setActiveFileId(id)} selectedNodeId={activeFileId}
+                        onNodeSelect={(id) => {
+                            const file = findFileById(fileSystem, id);
+                            if (file) handleFileSelect(file);
+                        }}
+                        selectedNodeId={activeFileId}
                         onDeleteNode={()=>{}} onCopyNode={()=>{}}
                     />
                 </div>
@@ -162,7 +183,10 @@ export default function FileIDEView({ projectId, initialProject, activeFilePath,
                     <EditorTabs
                         files={openFiles}
                         activeFileId={activeFileId}
-                        onTabClick={(id) => handleFileSelect(findFileByPath(fileSystem, id)!)}
+                        onTabClick={(id) => {
+                            const file = findFileById(fileSystem, id);
+                            if (file) handleFileSelect(file);
+                        }}
                         onTabClose={(id) => setOpenFileIds(p => { const n = new Set(p); n.delete(id); return n; })}
                         dirtyFileIds={new Set()}
                     />

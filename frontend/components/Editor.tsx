@@ -1,12 +1,9 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-// FIX: Import lineNumbers and highlightActiveLineGutter from @codemirror/view
 import { EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-// REMOVE: This import is no longer needed
-// import { lineNumbers, highlightActiveLineGutter } from '@codemirror/gutter';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { javascript } from '@codemirror/lang-javascript';
 import { html } from '@codemirror/lang-html';
@@ -53,9 +50,11 @@ const Editor: React.FC<EditorProps> = ({ fileName, content, onContentChange }) =
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
 
+  // Effect for initializing and re-initializing the editor when the file changes
   useEffect(() => {
-    if (content === null || !editorRef.current) return;
+    if (!editorRef.current) return;
 
+    // Destroy the old instance if it exists
     if (viewRef.current) {
       viewRef.current.destroy();
     }
@@ -66,10 +65,7 @@ const Editor: React.FC<EditorProps> = ({ fileName, content, onContentChange }) =
       ...basicExtensions,
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
-          const newValue = update.state.doc.toString();
-          if (newValue !== content) {
-            onContentChange(newValue);
-          }
+          onContentChange(update.state.doc.toString());
         }
       }),
     ];
@@ -79,7 +75,7 @@ const Editor: React.FC<EditorProps> = ({ fileName, content, onContentChange }) =
     }
 
     const state = EditorState.create({
-      doc: content,
+      doc: content || '',
       extensions: extensions,
     });
 
@@ -90,11 +86,26 @@ const Editor: React.FC<EditorProps> = ({ fileName, content, onContentChange }) =
 
     viewRef.current = view;
 
+    // The cleanup function is crucial
     return () => {
       viewRef.current?.destroy();
       viewRef.current = null;
     };
-  }, [fileName, content, onContentChange]);
+    // This effect should ONLY re-run when the fileName changes.
+  }, [fileName]);
+
+  // Effect for synchronizing content from parent to the editor
+  useEffect(() => {
+    if (viewRef.current && content !== null) {
+      const editorContent = viewRef.current.state.doc.toString();
+      if (content !== editorContent) {
+        viewRef.current.dispatch({
+          changes: { from: 0, to: editorContent.length, insert: content },
+        });
+      }
+    }
+    // This effect runs when the content prop from the parent changes.
+  }, [content]);
 
   if (content === null) {
     return (
