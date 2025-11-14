@@ -249,7 +249,6 @@ const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTre
     setConsoleLogs(['Uploading files...']);
     try {
       const filesToUpload = flattenFilesForApi(fileSystem, fileContents);
-      console.log(filesToUpload)
       await Promise.all(filesToUpload.map(f => fetch(`${SWALANG_API_URL}/api/session/${sessionId}/files`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f) })));
       setConsoleLogs(prev => [...prev, 'Executing...']);
       webSocket.send(JSON.stringify({ action: 'run' }));
