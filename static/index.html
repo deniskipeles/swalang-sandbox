@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swalang Playground</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .dark .monaco-editor-background { background-color: #1e1e1e; }
+        .dark .monaco-editor .margin { background-color: #1e1e1e; }
+        .context-menu {
+            position: absolute;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            padding: 5px 0;
+            z-index: 1000;
+        }
+        .context-menu button {
+            display: block;
+            width: 100%;
+            padding: 5px 10px;
+            text-align: left;
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+        .context-menu button:hover {
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body class="bg-white dark:bg-gray-900 text-black dark:text-white flex flex-col h-screen">
+
+    <header class="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-700">
+        <div class="flex items-center gap-4">
+            <button id="tree-toggle" class="md:hidden"><i class="fas fa-folder"></i></button>
+            <h1 class="font-bold">Swalang Playground</h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <button id="run-button-desktop" class="hidden md:flex bg-blue-600 text-white rounded-md px-3 py-1 items-center gap-2"><i class="fas fa-play"></i> Run</button>
+            <button id="theme-toggle"><i class="fas fa-sun"></i></button>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden">
+        <div id="tree-view" class="fixed md:relative top-0 left-0 h-full bg-white dark:bg-gray-900 z-10 transform -translate-x-full transition-transform duration-300 ease-in-out md:transform-none md:w-64 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+            <div class="flex justify-between items-center p-2 border-b border-gray-200 dark:border-gray-700 md:hidden">
+                <h2 class="font-bold">Files</h2>
+                <button id="tree-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="file-list" class="flex-1 p-2"></div>
+            <button id="new-file-button" class="bg-gray-200 text-gray-800 rounded-md px-3 py-1 m-2">+ New File</button>
+        </div>
+
+        <div class="flex-1 flex flex-col">
+            <div id="editor-container" class="flex-1"></div>
+            <div id="console-desktop" class="hidden md:block h-48 border-t border-gray-200 dark:border-gray-700 p-2 overflow-auto"></div>
+        </div>
+    </div>
+
+    <footer class="md:hidden p-4 flex justify-end">
+        <button id="run-button-mobile" class="bg-blue-600 text-white rounded-full p-4 shadow-lg"><i class="fas fa-play"></i></button>
+    </footer>
+
+    <div id="console-mobile" class="fixed bottom-0 left-0 w-full h-1/2 bg-white dark:bg-gray-900 z-20 flex-col hidden">
+        <div class="flex justify-between items-center p-2 border-b border-gray-200 dark:border-gray-700">
+            <h2 class="font-bold">Console</h2>
+            <button id="console-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="console-output" class="flex-1 p-2 overflow-auto"></div>
+    </div>
+    <div id="loader" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 hidden">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.27.0/min/vs/loader.min.js"></script>
+    <script>
+        // ... (variables and editor setup)
+
+        const createTreeView = (parent, tree, path) => {
+            for (const key in tree) {
+                if (key === '__isFile') continue;
+
+                const newPath = path ? `${path}/${key}` : key;
+                const isFile = tree[key].__isFile;
+
+                const entry = document.createElement('div');
+                const title = document.createElement('div');
+                title.className = `flex items-center p-2 cursor-pointer relative ${newPath === activeFile ? 'bg-blue-500 text-white' : ''}`;
+
+                title.oncontextmenu = (e) => {
+                    e.preventDefault();
+                    showContextMenu(e.pageX, e.pageY, newPath, isFile);
+                };
+
+                // ... (title setup)
+
+                parent.appendChild(title);
+
+                if (!isFile) {
+                    const childrenContainer = document.createElement('div');
+                    childrenContainer.className = 'ml-4 hidden';
+                    parent.appendChild(childrenContainer);
+                    createTreeView(childrenContainer, tree[key], newPath);
+                }
+            }
+        };
+
+        const showContextMenu = (x, y, path, isFile) => {
+            const menu = document.createElement('div');
+            menu.className = 'context-menu';
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
+
+            if (!isFile) {
+                const addFile = document.createElement('button');
+                addFile.textContent = 'Add File';
+                addFile.onclick = () => {
+                    const newFileName = prompt('Enter file name');
+                    if (newFileName) {
+                        files[`${path}/${newFileName}`] = '';
+                        renderFileTree();
+                    }
+                    menu.remove();
+                };
+                menu.appendChild(addFile);
+            }
+
+            const rename = document.createElement('button');
+            rename.textContent = 'Rename';
+            rename.onclick = () => {
+                const newName = prompt('Enter new name');
+                if (newName) {
+                    const newPath = path.substring(0, path.lastIndexOf('/') + 1) + newName;
+                    files[newPath] = files[path];
+                    delete files[path];
+                    if (activeFile === path) {
+                        activeFile = newPath;
+                    }
+                    renderFileTree();
+                }
+                menu.remove();
+            };
+            menu.appendChild(rename);
+
+            const del = document.createElement('button');
+            del.textContent = 'Delete';
+            del.onclick = () => {
+                delete files[path];
+                if (activeFile === path) {
+                    activeFile = Object.keys(files)[0];
+                    editor.setValue(files[activeFile] || "");
+                }
+                renderFileTree();
+                menu.remove();
+            };
+            menu.appendChild(del);
+
+            document.body.appendChild(menu);
+            document.onclick = () => menu.remove();
+        };
+
+        // ... (rest of the script)
+    </script>
+    <script>
+        const themeBtn  = document.getElementById('theme-toggle');
+        const html      = document.documentElement;   // <html> element already has class="dark"
+      
+        // initialise icon on load
+        function setIcon() {
+          themeBtn.innerHTML = html.classList.contains('dark')
+                               ? '<i class="fas fa-moon"></i>'
+                               : '<i class="fas fa-sun"></i>';
+        }
+        setIcon();
+      
+        // toggle dark class + save preference
+        themeBtn.addEventListener('click', () => {
+          html.classList.toggle('dark');
+          localStorage.setItem('theme', html.classList.contains('dark') ? 'dark' : 'light');
+          setIcon();
+        });
+      
+        // respect saved preference (or system) on reload
+        const saved = localStorage.getItem('theme');
+        if (saved === 'light') html.classList.remove('dark');
+        else if (saved === 'dark') html.classList.add('dark');
+        else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+          html.classList.remove('dark');
+        }
+      </script>
+</body>
+</html>
