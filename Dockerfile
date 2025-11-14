@@ -16,11 +16,11 @@ RUN go mod tidy && go build -o server ./cmd/server
 COPY ./swalang /usr/local/bin/swalang
 RUN chmod +x /usr/local/bin/swalang
 
-# Environment variable setup (these will come from Render/Koyeb)
-
-# Decode Astra bundle at runtime
+# Reconstruct the Astra bundle *safely* at runtime
 ENTRYPOINT ["/bin/sh", "-c", "\
   echo '🔐 Reconstructing Astra secure bundle...'; \
-  echo $SECURE_BUNDLE_B64 | base64 -d > /app/secure-connect-swalang-codebase.zip; \
+  CLEAN=$(printf \"%s\" \"$SECURE_BUNDLE_B64\" | tr -d '\\n\\r '); \
+  printf \"%s\" \"$CLEAN\" | base64 -d > /app/secure-connect-swalang-codebase.zip || { echo '❌ Base64 decode failed'; exit 1; }; \
+  echo '✅ Bundle restored to /app/secure-connect-swalang-codebase.zip'; \
   exec ./server \
 "]
