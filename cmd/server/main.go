@@ -1,35 +1,37 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path"
+	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
-
-	"swalang-api-dualmode/internal/api"
 
 	gocqlastra "github.com/datastax/gocql-astra"
 	"github.com/gin-gonic/gin"
 	"github.com/gocql/gocql"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"github.com/redis/go-redis/v9"
 )
 
-/* ---------- Project domain types (from second app) ---------- */
+/* ---------- Project domain types ---------- */
 
 type FileSystemNode struct {
 	ID       string           `json:"id"`
 	Name     string           `json:"name"`
-	Type     string           `json:"type"` // "file" | "folder"
+	Type     string           `json:"type"`
 	Content  string           `json:"content,omitempty"`
 	Children []FileSystemNode `json:"children,omitempty"`
 	IsFolder bool             `json:"isFolder,omitempty"`
@@ -38,7 +40,7 @@ type FileSystemNode struct {
 type IndexJob struct {
 	JobID     string    `json:"jobId"`
 	ProjectID string    `json:"projectId"`
-	Status    string    `json:"status"` // pending|running|done|failed
+	Status    string    `json:"status"`
 	Progress  int       `json:"progress"`
 	Total     int       `json:"total"`
 	StartedAt time.Time `json:"startedAt"`
@@ -57,13 +59,22 @@ type SimilarResult struct {
 	Similarity float32 `json:"similarity"`
 }
 
+/* ---------- Playground Session Types ---------- */
+
+// PlaygroundSession holds the data for a temporary, in-memory session.
+type PlaygroundSession struct {
+	Files     *sync.Map // Key: path (string), Value: content (string)
+	Logs      string
+	CreatedAt time.Time
+}
+
 /* ---------- Globals ---------- */
 
 var (
-	// Redis
-	rdb *redis.Client
+	// In-memory store for playground sessions
+	playgroundSessions = &sync.Map{}
 
-	// Astra DB
+	// Astra DB for persistent projects
 	session *gocql.Session
 
 	// WebSockets
@@ -96,7 +107,6 @@ func (m *MockEmbedder) Embed(text string) ([]float32, error) {
 
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Be permissive like original: allow all origins for dev
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type, X-Requested-With, Authorization")
@@ -115,12 +125,8 @@ func connectAstra() {
 	bundle := os.Getenv("ASTRA_BUNDLE")
 	token := os.Getenv("ASTRA_TOKEN")
 
-	if token == "" {
-		log.Println("⚠️  ASTRA_TOKEN not set. Project features disabled.")
-		return
-	}
-	if bundle == "" {
-		log.Println("⚠️  ASTRA_BUNDLE  not set. Project features disabled.")
+	if token == "" || bundle == "" {
+		log.Println("⚠️  ASTRA_TOKEN or ASTRA_BUNDLE not set. Project features disabled.")
 		return
 	}
 
@@ -139,32 +145,31 @@ func connectAstra() {
 	log.Println("✅ Connected to Astra DB")
 }
 
-/* ---------- Redis Setup ---------- */
+/* ---------- Playground Session Cleanup ---------- */
 
-func setupRedis() {
-	redisURL := os.Getenv("REDIS_URL")
-	if redisURL == "" {
-		redisURL = "redis://localhost:6379"
-	}
-	opt, err := redis.ParseURL(redisURL)
-	if err != nil {
-		log.Fatalf("Could not parse Redis URL: %v", err)
-	}
-	rdb = redis.NewClient(opt)
-
-	ctx := context.Background()
-	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Could not connect to Redis: %v", err)
-	}
-	log.Println("✅ Connected to Redis")
+// startSessionCleanup periodically removes old in-memory sessions.
+func startSessionCleanup(interval time.Duration, maxAge time.Duration) {
+	ticker := time.NewTicker(interval)
+	go func() {
+		for range ticker.C {
+			playgroundSessions.Range(func(key, value interface{}) bool {
+				sessionID := key.(string)
+				session := value.(*PlaygroundSession)
+				if time.Since(session.CreatedAt) > maxAge {
+					playgroundSessions.Delete(sessionID)
+					log.Printf("Cleaned up expired playground session: %s", sessionID)
+				}
+				return true
+			})
+		}
+	}()
 }
 
 /* ---------- Main ---------- */
 
 func main() {
-	// Setup Redis (required for session API)
-	setupRedis()
-	api.SetRedisClient(rdb)
+	// Start the in-memory session garbage collector
+	startSessionCleanup(5*time.Minute, 15*time.Minute)
 
 	// Setup Astra (optional — if env vars missing, skip)
 	connectAstra()
@@ -184,22 +189,22 @@ func main() {
 	r.Use(gin.Recovery())
 	r.Use(corsMiddleware())
 
-	// Static file
 	r.GET("/", func(c *gin.Context) {
 		c.File("static/index.html")
 	})
 
-	// ======== SESSION API (original) ========
+	// ======== PLAYGROUND SESSION API (In-Memory) ========
 	sessionAPI := r.Group("/api")
 	{
-		sessionAPI.POST("/session/new", gin.WrapF(api.NewSessionHandler))
-		sessionAPI.POST("/session/:id/files", gin.WrapF(api.UploadFileHandler))
-		sessionAPI.POST("/session/:id/run", gin.WrapF(api.RunHandler))
-		sessionAPI.GET("/session/:id/logs", gin.WrapF(api.LogsHandler))
-		sessionAPI.GET("/session/:id/ws", gin.WrapF(api.HandleWS))
+		sessionAPI.POST("/session/new", newPlaygroundSessionHandler)
+		sessionAPI.POST("/session/:id/files", uploadPlaygroundFileHandler)
+		sessionAPI.GET("/session/:id/ws", wsPlaygroundHandler)
+		// Deprecated REST endpoints, kept for compatibility if needed.
+		sessionAPI.POST("/session/:id/run", runPlaygroundHandler)
+		sessionAPI.GET("/session/:id/logs", logsPlaygroundHandler)
 	}
 
-	// ======== PROJECT API (new) — only if Astra is connected ========
+	// ======== PERSISTENT PROJECT API (Astra DB) ========
 	if session != nil {
 		projectAPI := r.Group("/api")
 		{
@@ -214,7 +219,6 @@ func main() {
 		r.GET("/ws/:projectId", handleWS)
 	}
 
-	// Health check (works regardless)
 	r.GET("/health", health)
 
 	port := os.Getenv("PORT")
@@ -229,7 +233,6 @@ func main() {
 		ReadTimeout:  15 * time.Second,
 	}
 
-	// Graceful shutdown
 	go func() {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
@@ -243,15 +246,173 @@ func main() {
 	}()
 
 	log.Printf("🚀 Server starting on port %s", port)
+	log.Println("✨ Playground features (In-Memory) enabled")
 	if session != nil {
-		log.Println("✨ Project features (Astra) enabled")
+		log.Println("✨ Persistent Project features (Astra DB) enabled")
 	} else {
-		log.Println("⚠️  Project features disabled (missing ASTRA_BUNDLE or ASTRA_TOKEN)")
+		log.Println("⚠️  Persistent Project features disabled (missing ASTRA_BUNDLE or ASTRA_TOKEN)")
 	}
 	log.Fatal(srv.ListenAndServe())
 }
 
-/* ============ PROJECT API HANDLERS (copied from second app) ============ */
+/* ============ PLAYGROUND API HANDLERS (In-Memory) ============ */
+
+func newPlaygroundSessionHandler(c *gin.Context) {
+	sessionID := uuid.New().String()
+	newSession := &PlaygroundSession{
+		Files:     &sync.Map{},
+		CreatedAt: time.Now(),
+	}
+	playgroundSessions.Store(sessionID, newSession)
+
+	wsScheme := "ws"
+	if c.Request.TLS != nil {
+		wsScheme = "wss"
+	}
+	wsURL := fmt.Sprintf("%s://%s/api/session/%s/ws", wsScheme, c.Request.Host, sessionID)
+
+	c.JSON(http.StatusOK, gin.H{
+		"session_id": sessionID,
+		"ws_url":     wsURL,
+	})
+}
+
+func uploadPlaygroundFileHandler(c *gin.Context) {
+	sessionID := c.Param("id")
+	var req struct {
+		Path    string `json:"path"`
+		Content string `json:"content"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	cleanPath := filepath.Clean(req.Path)
+	if strings.HasPrefix(cleanPath, "..") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file path"})
+		return
+	}
+
+	session, ok := playgroundSessions.Load(sessionID)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+
+	session.(*PlaygroundSession).Files.Store(cleanPath, req.Content)
+	c.Status(http.StatusCreated)
+}
+
+func wsPlaygroundHandler(c *gin.Context) {
+	sessionID := c.Param("id")
+	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		log.Printf("Failed to upgrade connection for session %s: %v", sessionID, err)
+		return
+	}
+	defer conn.Close()
+
+	for {
+		var msg map[string]string
+		if err := conn.ReadJSON(&msg); err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("WebSocket closed unexpectedly for session %s: %v", sessionID, err)
+			}
+			break
+		}
+		if action, ok := msg["action"]; ok && action == "run" {
+			executeAndStream(conn, sessionID)
+		}
+	}
+}
+
+func executeAndStream(conn *websocket.Conn, sessionID string) {
+	sessionVal, ok := playgroundSessions.Load(sessionID)
+	if !ok {
+		sendJSONError(conn, "session not found", fmt.Errorf("invalid session id %s", sessionID))
+		return
+	}
+	session := sessionVal.(*PlaygroundSession)
+
+	codeVal, ok := session.Files.Load("main.sw")
+	if !ok {
+		sendJSONError(conn, "file 'main.sw' not found in session", nil)
+		return
+	}
+	code := codeVal.(string)
+
+	tempDir, err := os.MkdirTemp("", "swalang-exec-*")
+	if err != nil {
+		sendJSONError(conn, "failed to create execution directory", err)
+		return
+	}
+	defer os.RemoveAll(tempDir)
+
+	entrypointPath := filepath.Join(tempDir, "main.sw")
+	if err := os.WriteFile(entrypointPath, []byte(code), 0644); err != nil {
+		sendJSONError(conn, "failed to write code to file", err)
+		return
+	}
+
+	binPath := os.Getenv("SWALANG_PATH")
+	if binPath == "" {
+		binPath = "/usr/local/bin/swalang" // Default path
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binPath, "main.sw")
+	cmd.Dir = tempDir
+
+	stdoutPipe, _ := cmd.StdoutPipe()
+	stderrPipe, _ := cmd.StderrPipe()
+
+	if err := cmd.Start(); err != nil {
+		sendJSONError(conn, "failed to start execution", err)
+		return
+	}
+
+	go streamPipe(conn, stdoutPipe, "stdout")
+	go streamPipe(conn, stderrPipe, "stderr")
+
+	cmd.Wait()
+}
+
+func streamPipe(conn *websocket.Conn, pipe io.ReadCloser, streamType string) {
+	scanner := bufio.NewScanner(pipe)
+	for scanner.Scan() {
+		message := map[string]string{"type": streamType, "content": scanner.Text()}
+		if err := conn.WriteJSON(message); err != nil {
+			log.Printf("Failed to write to WebSocket: %v", err)
+			break
+		}
+	}
+}
+
+func sendJSONError(conn *websocket.Conn, message string, err error) {
+	errMsg := message
+	if err != nil {
+		errMsg = message + ": " + err.Error()
+		log.Printf("%s: %v", message, err)
+	}
+	errorMsg := map[string]string{"type": "error", "content": errMsg}
+	conn.WriteJSON(errorMsg)
+}
+
+// runPlaygroundHandler is a deprecated REST endpoint for running code.
+func runPlaygroundHandler(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Please use the WebSocket connection to run code."})
+}
+
+// logsPlaygroundHandler is a deprecated REST endpoint for fetching logs.
+func logsPlaygroundHandler(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Logs are streamed via the WebSocket connection."})
+}
+
+/* ============ PROJECT API HANDLERS (Astra DB) ============ */
 
 func getProject(c *gin.Context) {
 	projID := c.Param("id")
@@ -408,20 +569,14 @@ func health(c *gin.Context) {
 	status := gin.H{"status": "ok", "ts": time.Now().Unix()}
 	if session != nil {
 		status["astra"] = "connected"
+	} else {
+		status["astra"] = "disconnected"
 	}
-	if rdb != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		if err := rdb.Ping(ctx).Err(); err == nil {
-			status["redis"] = "connected"
-		} else {
-			status["redis"] = "disconnected"
-		}
-	}
+	status["playground"] = "in-memory"
 	c.JSON(http.StatusOK, status)
 }
 
-/* ============ Astra Data Helpers (copied) ============ */
+/* ============ Astra Data Helpers ============ */
 
 func projectSize(projectID string) (int, error) {
 	var size int
@@ -431,13 +586,10 @@ func projectSize(projectID string) (int, error) {
 
 func loadFat(projectID string) []FileSystemNode {
 	var raw string
-	// FIX: Add an explicit "ORDER BY version DESC" to guarantee the latest snapshot is returned.
 	err := session.Query(`SELECT snapshot FROM project_snapshots WHERE project_id = ? ORDER BY version DESC LIMIT 1`, projectID).
 		Consistency(gocql.One).
 		Scan(&raw)
 	if err != nil {
-		// It's helpful to log the error here if you have a logger configured
-		// log.Printf("Failed to load fat project %s: %v", projectID, err)
 		return nil
 	}
 	var tree []FileSystemNode
