@@ -3,192 +3,489 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Swalang Playground</title>
+    <title>Swalang Sandbox</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        .dark .monaco-editor-background { background-color: #1e1e1e; }
-        .dark .monaco-editor .margin { background-color: #1e1e1e; }
+        /* Basic scrollbar styling */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1a202c; }
+        ::-webkit-scrollbar-thumb { background: #4a5568; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #718096; }
+        
+        /* CodeMirror 6 styles */
+        .cm-editor { height: 100%; font-family: monospace; }
+        .cm-scroller { overflow: auto; }
+        html.dark .cm-editor { background-color: #1e1e1e; color: #d4d4d4; }
+        html.dark .cm-gutters { background-color: #1e1e1e; border-right: 1px solid #333; }
+        html.dark .cm-activeLineGutter { background-color: #2a2a2a; }
+        html.dark .cm-activeLine { background-color: #2a2a2a; }
+        html.dark .cm-selectionBackground { background-color: #3a3d41; }
+
+        /* Context Menu */
         .context-menu {
             position: absolute;
-            background-color: #fff;
-            border: 1px solid #ccc;
-            padding: 5px 0;
             z-index: 1000;
+            width: 140px;
+            background-color: #2d3748; /* dark:bg-gray-700 */
+            border: 1px solid #4a5568; /* dark:border-gray-600 */
+            border-radius: 0.375rem; /* rounded-md */
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+            padding-top: 4px; padding-bottom: 4px;
         }
-        .context-menu button {
+        .context-menu-item {
             display: block;
             width: 100%;
-            padding: 5px 10px;
+            padding: 6px 12px;
+            font-size: 0.875rem;
             text-align: left;
             background: none;
             border: none;
             cursor: pointer;
+            color: #e2e8f0; /* dark:text-gray-200 */
         }
-        .context-menu button:hover {
-            background-color: #f0f0f0;
+        .context-menu-item:hover {
+            background-color: #4a5568; /* dark:bg-gray-600 */
+        }
+        .context-menu-item.delete {
+            color: #f56565; /* text-red-500 */
         }
     </style>
 </head>
-<body class="bg-white dark:bg-gray-900 text-black dark:text-white flex flex-col h-screen">
 
-    <header class="flex justify-between items-center p-3 border-b border-gray-200 dark:border-gray-700">
-        <div class="flex items-center gap-4">
-            <button id="tree-toggle" class="md:hidden"><i class="fas fa-folder"></i></button>
-            <h1 class="font-bold">Swalang Playground</h1>
-        </div>
-        <div class="flex items-center gap-4">
-            <button id="run-button-desktop" class="hidden md:flex bg-blue-600 text-white rounded-md px-3 py-1 items-center gap-2"><i class="fas fa-play"></i> Run</button>
-            <button id="theme-toggle"><i class="fas fa-sun"></i></button>
-        </div>
-    </header>
+<body class="bg-gray-800 text-gray-200 font-sans flex flex-col h-screen overflow-hidden">
 
-    <div class="flex flex-1 overflow-hidden">
-        <div id="tree-view" class="fixed md:relative top-0 left-0 h-full bg-white dark:bg-gray-900 z-10 transform -translate-x-full transition-transform duration-300 ease-in-out md:transform-none md:w-64 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-            <div class="flex justify-between items-center p-2 border-b border-gray-200 dark:border-gray-700 md:hidden">
-                <h2 class="font-bold">Files</h2>
-                <button id="tree-close"><i class="fas fa-times"></i></button>
-            </div>
-            <div id="file-list" class="flex-1 p-2"></div>
-            <button id="new-file-button" class="bg-gray-200 text-gray-800 rounded-md px-3 py-1 m-2">+ New File</button>
+    <!-- App Container -->
+    <div id="app-container" class="flex flex-1 overflow-hidden">
+        <!-- Desktop Layout -->
+        <div class="hidden md:flex flex-1 overflow-hidden">
+            <!-- Sidebar -->
+            <aside id="desktop-sidebar" class="w-64 bg-gray-800 flex flex-col transition-all duration-300">
+                <header class="flex justify-between items-center p-2 border-b border-gray-700 flex-shrink-0">
+                    <h2 class="font-semibold text-lg">Explorer</h2>
+                    <div class="flex items-center space-x-1">
+                        <button id="new-file-btn-desktop" title="New File" class="p-1 rounded hover:bg-gray-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+                        </button>
+                        <button id="new-folder-btn-desktop" title="New Folder" class="p-1 rounded hover:bg-gray-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"></path><line x1="12" y1="10" x2="12" y2="16"></line><line x1="9" y1="13" x2="15" y2="13"></line></svg>
+                        </button>
+                    </div>
+                </header>
+                <div id="tree-view-container" class="flex-1 overflow-y-auto p-1"></div>
+            </aside>
+            <!-- Main Content -->
+            <main class="flex-1 flex flex-col min-w-0">
+                <header class="flex items-center bg-gray-900 border-b border-gray-700 flex-shrink-0">
+                    <button id="sidebar-toggle" title="Toggle Sidebar" class="p-2 hover:bg-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                    </button>
+                    <div id="editor-tabs-container" class="flex-shrink-0 flex items-center overflow-x-auto"></div>
+                    <div class="flex-grow"></div>
+                    <button id="run-btn-desktop" class="flex items-center space-x-2 mr-2 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-500">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 h-4 w-4"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        <span>Run</span>
+                    </button>
+                </header>
+                <div class="flex-1 flex flex-col overflow-y-auto">
+                    <div id="editor-container" class="flex-grow"></div>
+                    <div id="console-container-desktop" class="h-1/3 max-h-96 border-t border-gray-700"></div>
+                </div>
+            </main>
         </div>
 
-        <div class="flex-1 flex flex-col">
-            <div id="editor-container" class="flex-1"></div>
-            <div id="console-desktop" class="hidden md:block h-48 border-t border-gray-200 dark:border-gray-700 p-2 overflow-auto"></div>
+        <!-- Mobile Layout -->
+        <div class="flex md:hidden flex-1 flex-col overflow-hidden">
+            <main id="mobile-main-view" class="flex-1 overflow-y-auto"></main>
+            <nav class="flex items-center bg-gray-900 border-t border-gray-700 flex-shrink-0">
+                <button data-view="explorer" class="mobile-nav-btn flex flex-col items-center justify-center w-full pt-2 pb-1 text-xs text-blue-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 2H8.6c-.4 0-.8.2-1.1.5-.3.3-.5.7-.5 1.1V14c0 .8.6 1.4 1.4 1.4h9.8c.4 0 .8-.2 1.1-.5.3-.3.5-.7.5-1.1V6.5L15.5 2z"></path><path d="M3 7.6v12.8c0 .8.6 1.4 1.4 1.4h9.8"></path><path d="M15 2v5h5"></path></svg>
+                    <span>Explorer</span>
+                </button>
+                <button data-view="editor" class="mobile-nav-btn flex flex-col items-center justify-center w-full pt-2 pb-1 text-xs text-gray-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+                    <span>Editor</span>
+                </button>
+                 <button data-view="console" class="mobile-nav-btn flex flex-col items-center justify-center w-full pt-2 pb-1 text-xs text-gray-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                    <span>Console</span>
+                </button>
+            </nav>
         </div>
     </div>
+    
+    <!-- CodeMirror 6 Dependencies (via Skypack CDN) -->
+    <script type="module">
+        import {EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter} from "https://cdn.skypack.dev/@codemirror/view";
+        import {EditorState} from "https://cdn.skypack.dev/@codemirror/state";
+        import {defaultKeymap, history, historyKeymap} from "https://cdn.skypack.dev/@codemirror/commands";
+        import {syntaxHighlighting, defaultHighlightStyle} from "https://cdn.skypack.dev/@codemirror/language";
+        import {javascript} from "https://cdn.skypack.dev/@codemirror/lang-javascript";
+        
+        const API_URL = window.location.origin;
 
-    <footer class="md:hidden p-4 flex justify-end">
-        <button id="run-button-mobile" class="bg-blue-600 text-white rounded-full p-4 shadow-lg"><i class="fas fa-play"></i></button>
-    </footer>
+        const state = {
+            fileSystem: [
+              { id: '1', name: 'src', type: 'folder', children: [
+                  { id: '5', name: 'App.tsx', type: 'file', content: 'import React from "react";\n\nfunction App() {\n  return <h1>Welcome!</h1>;\n}\n\nexport default App;' },
+                ],
+              },
+              { id: '9', name: 'package.json', type: 'file', content: '{\n  "name": "my-app",\n  "version": "1.0.0"\n}' },
+              { id: '12', name: 'main.sw', type: 'file', content: 'print("Hello from the Swalang Sandbox!")' },
+            ],
+            openFileIds: new Set(['12']),
+            activeFileId: '12',
+            fileContents: {},
+            consoleLogs: ['Welcome to the Swalang Sandbox!'],
+            sessionId: null,
+            websocket: null,
+            isExecuting: false,
+            activeMobileView: 'explorer',
+            editorInstance: null,
+        };
 
-    <div id="console-mobile" class="fixed bottom-0 left-0 w-full h-1/2 bg-white dark:bg-gray-900 z-20 flex-col hidden">
-        <div class="flex justify-between items-center p-2 border-b border-gray-200 dark:border-gray-700">
-            <h2 class="font-bold">Console</h2>
-            <button id="console-close"><i class="fas fa-times"></i></button>
-        </div>
-        <div id="console-output" class="flex-1 p-2 overflow-auto"></div>
-    </div>
-    <div id="loader" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 hidden">
-        <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
-    </div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.27.0/min/vs/loader.min.js"></script>
-    <script>
-        // ... (variables and editor setup)
-
-        const createTreeView = (parent, tree, path) => {
-            for (const key in tree) {
-                if (key === '__isFile') continue;
-
-                const newPath = path ? `${path}/${key}` : key;
-                const isFile = tree[key].__isFile;
-
-                const entry = document.createElement('div');
-                const title = document.createElement('div');
-                title.className = `flex items-center p-2 cursor-pointer relative ${newPath === activeFile ? 'bg-blue-500 text-white' : ''}`;
-
-                title.oncontextmenu = (e) => {
-                    e.preventDefault();
-                    showContextMenu(e.pageX, e.pageY, newPath, isFile);
-                };
-
-                // ... (title setup)
-
-                parent.appendChild(title);
-
-                if (!isFile) {
-                    const childrenContainer = document.createElement('div');
-                    childrenContainer.className = 'ml-4 hidden';
-                    parent.appendChild(childrenContainer);
-                    createTreeView(childrenContainer, tree[key], newPath);
+        // --- UTILITY FUNCTIONS ---
+        const findNodeById = (nodes, id) => {
+            for (const node of nodes) {
+                if (node.id === id) return node;
+                if (node.type === 'folder') {
+                    const found = findNodeById(node.children, id);
+                    if (found) return found;
                 }
+            }
+            return null;
+        };
+        const findParent = (nodes, childId, parent = null) => {
+            for (const node of nodes) {
+                if (node.id === childId) return parent;
+                if (node.type === 'folder') {
+                    const found = findParent(node.children, childId, node);
+                    if (found) return found;
+                }
+            }
+            return null;
+        }
+        const flattenFiles = (nodes, path = '') => {
+            let files = [];
+            for (const node of nodes) {
+                const newPath = path ? `${path}/${node.name}` : node.name;
+                if (node.type === 'file') {
+                    files.push({ path: newPath, content: state.fileContents[node.id] ?? node.content });
+                } else {
+                    files = files.concat(flattenFiles(node.children, newPath));
+                }
+            }
+            return files;
+        };
+
+        // --- RENDER FUNCTIONS ---
+        const renderAll = () => {
+            renderTreeView();
+            renderEditorTabs();
+            renderEditor();
+            renderConsole();
+            renderMobileView();
+        };
+
+        const renderTreeView = () => {
+            const createTreeItemHTML = (node, level) => {
+                const isOpen = true; // For simplicity, all folders are open
+                const isSelected = node.id === state.activeFileId;
+                const icon = node.type === 'folder' 
+                    ? `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-1 flex-shrink-0"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"></path></svg>`
+                    : `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-1 flex-shrink-0"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
+                
+                const childrenHTML = node.type === 'folder' && isOpen
+                    ? node.children.map(child => createTreeItemHTML(child, level + 1)).join('')
+                    : '';
+
+                return `
+                    <div class="text-sm">
+                        <div data-id="${node.id}" class="tree-item flex items-center cursor-pointer p-1 rounded ${isSelected ? 'bg-blue-500/20' : 'hover:bg-gray-700'}" style="padding-left: ${level * 1}rem;">
+                            ${icon}
+                            <span class="truncate">${node.name}</span>
+                        </div>
+                        ${childrenHTML}
+                    </div>
+                `;
+            };
+            const treeContainer = document.getElementById('tree-view-container');
+            if (treeContainer) {
+                treeContainer.innerHTML = state.fileSystem.map(node => createTreeItemHTML(node, 0)).join('');
             }
         };
 
-        const showContextMenu = (x, y, path, isFile) => {
-            const menu = document.createElement('div');
-            menu.className = 'context-menu';
-            menu.style.left = `${x}px`;
-            menu.style.top = `${y}px`;
+        const renderEditorTabs = () => {
+             const tabsContainer = document.getElementById('editor-tabs-container');
+             if (!tabsContainer) return;
 
-            if (!isFile) {
-                const addFile = document.createElement('button');
-                addFile.textContent = 'Add File';
-                addFile.onclick = () => {
-                    const newFileName = prompt('Enter file name');
-                    if (newFileName) {
-                        files[`${path}/${newFileName}`] = '';
-                        renderFileTree();
-                    }
-                    menu.remove();
-                };
-                menu.appendChild(addFile);
-            }
+             tabsContainer.innerHTML = '';
+             state.openFileIds.forEach(id => {
+                 const file = findNodeById(state.fileSystem, id);
+                 if (!file || file.type !== 'file') return;
 
-            const rename = document.createElement('button');
-            rename.textContent = 'Rename';
-            rename.onclick = () => {
-                const newName = prompt('Enter new name');
-                if (newName) {
-                    const newPath = path.substring(0, path.lastIndexOf('/') + 1) + newName;
-                    files[newPath] = files[path];
-                    delete files[path];
-                    if (activeFile === path) {
-                        activeFile = newPath;
-                    }
-                    renderFileTree();
-                }
-                menu.remove();
-            };
-            menu.appendChild(rename);
-
-            const del = document.createElement('button');
-            del.textContent = 'Delete';
-            del.onclick = () => {
-                delete files[path];
-                if (activeFile === path) {
-                    activeFile = Object.keys(files)[0];
-                    editor.setValue(files[activeFile] || "");
-                }
-                renderFileTree();
-                menu.remove();
-            };
-            menu.appendChild(del);
-
-            document.body.appendChild(menu);
-            document.onclick = () => menu.remove();
+                 const isActive = id === state.activeFileId;
+                 const tab = document.createElement('div');
+                 tab.className = `flex items-center cursor-pointer px-4 py-2 text-sm border-r border-gray-700 ${isActive ? 'bg-gray-800' : 'bg-gray-900 hover:bg-gray-700'}`;
+                 tab.dataset.id = id;
+                 tab.innerHTML = `
+                    <span class="whitespace-nowrap">${file.name}</span>
+                    <button data-id="${id}" class="tab-close-btn ml-3 p-0.5 rounded-full hover:bg-gray-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                 `;
+                 tabsContainer.appendChild(tab);
+             });
         };
 
-        // ... (rest of the script)
+        const renderEditor = () => {
+            const activeFile = findNodeById(state.fileSystem, state.activeFileId);
+            if (!state.editorInstance || !activeFile) return;
+
+            const currentContent = state.fileContents[activeFile.id] ?? activeFile.content;
+            if (state.editorInstance.state.doc.toString() !== currentContent) {
+                 state.editorInstance.dispatch({
+                    changes: { from: 0, to: state.editorInstance.state.doc.length, insert: currentContent }
+                });
+            }
+        };
+        
+        const renderConsole = () => {
+            const consoleEl = document.querySelector('#console-container-desktop .output, #console-container-mobile .output');
+            if(consoleEl) {
+                consoleEl.innerHTML = state.consoleLogs.map(log => `<div>${log.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>`).join('');
+                consoleEl.scrollTop = consoleEl.scrollHeight;
+            }
+        };
+        
+        const renderMobileView = () => {
+            const mainView = document.getElementById('mobile-main-view');
+            if (!mainView) return;
+
+            document.querySelectorAll('.mobile-nav-btn').forEach(btn => {
+                const view = btn.dataset.view;
+                if (view === state.activeMobileView) {
+                    btn.classList.add('text-blue-400');
+                    btn.classList.remove('text-gray-400');
+                } else {
+                    btn.classList.remove('text-blue-400');
+                    btn.classList.add('text-gray-400');
+                }
+            });
+
+            if (state.activeMobileView === 'explorer') {
+                 mainView.innerHTML = `<div id="tree-view-container" class="flex-1 overflow-y-auto p-1"></div>`;
+                 renderTreeView();
+            } else if (state.activeMobileView === 'editor') {
+                 mainView.innerHTML = `<div id="editor-container" class="h-full w-full"></div>`;
+                 initEditor('editor-container');
+            } else if (state.activeMobileView === 'console') {
+                mainView.innerHTML = `<div id="console-container-mobile" class="h-full"></div>`;
+                initConsole('console-container-mobile');
+            }
+        };
+
+        // --- EVENT HANDLERS & ACTIONS ---
+        const handleFileSelect = (id) => {
+            const node = findNodeById(state.fileSystem, id);
+            if (!node || node.type !== 'file') return;
+
+            state.openFileIds.add(id);
+            state.activeFileId = id;
+            if (state.activeMobileView === 'explorer') {
+                state.activeMobileView = 'editor';
+            }
+            renderAll();
+        };
+
+        const handleTabClick = (id) => {
+            state.activeFileId = id;
+            renderAll();
+        };
+
+        const handleTabClose = (id) => {
+            state.openFileIds.delete(id);
+            if (state.activeFileId === id) {
+                const openIds = Array.from(state.openFileIds);
+                state.activeFileId = openIds.length > 0 ? openIds[openIds.length - 1] : null;
+            }
+            renderAll();
+        };
+        
+        const handleRunCode = async () => {
+            if (!state.sessionId || !state.websocket || state.websocket.readyState !== WebSocket.OPEN) {
+                state.consoleLogs.push('Error: Not connected to execution server.');
+                renderConsole();
+                return;
+            }
+            state.isExecuting = true;
+            document.querySelectorAll('#run-btn-desktop, #run-btn-console').forEach(b => b.disabled = true);
+            state.consoleLogs = ['Uploading files...'];
+            renderConsole();
+
+            try {
+                const filesToUpload = flattenFiles(state.fileSystem);
+                const uploadPromises = filesToUpload.map(file =>
+                    fetch(`${API_URL}/api/session/${state.sessionId}/files`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: file.path, content: file.content }),
+                    })
+                );
+                await Promise.all(uploadPromises);
+
+                state.consoleLogs.push('Executing code...');
+                renderConsole();
+                state.websocket.send(JSON.stringify({ action: 'run' }));
+            } catch (error) {
+                 state.consoleLogs.push(`Error: ${error.message}`);
+                 renderConsole();
+            } finally {
+                state.isExecuting = false;
+                document.querySelectorAll('#run-btn-desktop, #run-btn-console').forEach(b => b.disabled = false);
+            }
+        };
+
+        // --- INITIALIZATION ---
+        const initEditor = (containerId) => {
+            const container = document.getElementById(containerId);
+            if (!container || container.querySelector('.cm-editor')) return; // Already initialized
+
+            const activeFile = findNodeById(state.fileSystem, state.activeFileId);
+            const content = activeFile ? (state.fileContents[activeFile.id] ?? activeFile.content) : 'Select a file to start editing.';
+            
+            const extensions = [
+                lineNumbers(),
+                highlightActiveLineGutter(),
+                history(),
+                keymap.of([...defaultKeymap, ...historyKeymap]),
+                highlightActiveLine(),
+                syntaxHighlighting(defaultHighlightStyle),
+                EditorView.lineWrapping,
+                javascript(), // Default language
+                EditorView.updateListener.of((update) => {
+                    if (update.docChanged && state.activeFileId) {
+                        state.fileContents[state.activeFileId] = update.state.doc.toString();
+                    }
+                })
+            ];
+
+            const editorState = EditorState.create({
+                doc: content,
+                extensions,
+            });
+            
+            state.editorInstance = new EditorView({
+                state: editorState,
+                parent: container,
+            });
+        };
+
+        const initConsole = (containerId) => {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            container.innerHTML = `
+                <div class="h-full w-full bg-gray-900 text-gray-200 flex flex-col font-mono text-sm">
+                    <div class="flex items-center justify-between p-1 border-b border-gray-700 bg-gray-800 flex-shrink-0">
+                        <span class="font-semibold px-2">CONSOLE</span>
+                        <div class="flex items-center space-x-2">
+                             <button id="run-btn-console" class="flex items-center px-2 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 h-4 w-4"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                                <span>Run</span>
+                             </button>
+                             <button id="clear-console-btn" title="Clear Console" class="p-1 rounded-full hover:bg-gray-700">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+                             </button>
+                        </div>
+                    </div>
+                    <div class="flex-1 p-2 overflow-y-auto output"></div>
+                </div>`;
+            renderConsole();
+        };
+
+        const initApp = async () => {
+            // Setup initial content
+            state.fileSystem.forEach(node => {
+                if (node.type === 'file' && node.content) state.fileContents[node.id] = node.content;
+                if (node.type === 'folder') {
+                    node.children.forEach(child => {
+                        if (child.type === 'file' && child.content) state.fileContents[child.id] = child.content;
+                    })
+                }
+            });
+
+            // Initial render
+            initEditor('editor-container');
+            initConsole('console-container-desktop');
+            renderAll();
+            
+            // Event Listeners
+            document.getElementById('app-container').addEventListener('click', (e) => {
+                const treeItem = e.target.closest('.tree-item');
+                const tabItem = e.target.closest('#editor-tabs-container > div');
+                const tabCloseBtn = e.target.closest('.tab-close-btn');
+                const mobileNavBtn = e.target.closest('.mobile-nav-btn');
+
+                if (tabCloseBtn) {
+                    e.stopPropagation();
+                    handleTabClose(tabCloseBtn.dataset.id);
+                } else if (tabItem) {
+                    handleTabClick(tabItem.dataset.id);
+                } else if (treeItem) {
+                    handleFileSelect(treeItem.dataset.id);
+                } else if (mobileNavBtn) {
+                    state.activeMobileView = mobileNavBtn.dataset.view;
+                    renderMobileView();
+                }
+            });
+
+            document.getElementById('sidebar-toggle').addEventListener('click', () => {
+                document.getElementById('desktop-sidebar').classList.toggle('w-64');
+                document.getElementById('desktop-sidebar').classList.toggle('w-0');
+            });
+
+            document.addEventListener('click', e => {
+                const btn = e.target.closest('#run-btn-desktop, #run-btn-console');
+                if (btn) handleRunCode();
+
+                const clearBtn = e.target.closest('#clear-console-btn');
+                if (clearBtn) {
+                    state.consoleLogs = ['Console cleared.'];
+                    renderConsole();
+                }
+            });
+
+            // API Connection
+            try {
+                const response = await fetch(`${API_URL}/api/session/new`, { method: 'POST' });
+                const data = await response.json();
+                state.sessionId = data.session_id;
+
+                const wsUrl = data.ws_url.startsWith('ws:') && location.protocol === 'https:'
+                    ? data.ws_url.replace('ws:', 'wss:')
+                    : data.ws_url;
+                
+                state.websocket = new WebSocket(wsUrl);
+                state.websocket.onopen = () => {
+                    state.consoleLogs.push('Connected to execution server.');
+                    renderConsole();
+                };
+                state.websocket.onmessage = (event) => {
+                    const msg = JSON.parse(event.data);
+                    state.consoleLogs.push(msg.content);
+                    renderConsole();
+                };
+                state.websocket.onclose = () => {
+                    state.consoleLogs.push('Disconnected from execution server.');
+                    renderConsole();
+                };
+
+            } catch (error) {
+                state.consoleLogs.push(`Error connecting to server: ${error.message}`);
+                renderConsole();
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', initApp);
     </script>
-    <script>
-        const themeBtn  = document.getElementById('theme-toggle');
-        const html      = document.documentElement;   // <html> element already has class="dark"
-      
-        // initialise icon on load
-        function setIcon() {
-          themeBtn.innerHTML = html.classList.contains('dark')
-                               ? '<i class="fas fa-moon"></i>'
-                               : '<i class="fas fa-sun"></i>';
-        }
-        setIcon();
-      
-        // toggle dark class + save preference
-        themeBtn.addEventListener('click', () => {
-          html.classList.toggle('dark');
-          localStorage.setItem('theme', html.classList.contains('dark') ? 'dark' : 'light');
-          setIcon();
-        });
-      
-        // respect saved preference (or system) on reload
-        const saved = localStorage.getItem('theme');
-        if (saved === 'light') html.classList.remove('dark');
-        else if (saved === 'dark') html.classList.add('dark');
-        else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-          html.classList.remove('dark');
-        }
-      </script>
 </body>
 </html>
