@@ -220,10 +220,14 @@ func main() {
 	}
 
 	r.GET("/health", health)
+	r.GET("/healthz", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+	
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "5000"
+		port = "8080"
 	}
 
 	srv := &http.Server{

@@ -16,6 +16,10 @@ RUN go mod tidy && go build -o server ./cmd/server
 COPY ./swalang /usr/local/bin/swalang
 RUN chmod +x /usr/local/bin/swalang
 
+
+# Expose the correct port
+EXPOSE 8080
+
 # Reconstruct the Astra bundle *safely* at runtime
 ENTRYPOINT ["/bin/sh", "-c", "\
   echo '🔐 Reconstructing Astra secure bundle...'; \
