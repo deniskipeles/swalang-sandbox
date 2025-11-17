@@ -32,3 +32,20 @@ export interface GetProjectResponse {
   tree?: FileSystemNode[];
   files?: { name: string; isFolder: boolean }[];
 }
+
+// // Add this interface to your types.ts file
+// export interface GetProjectResponse {
+//   strategy: 'fat' | 'split';
+//   size: number;
+//   tree?: FileSystemNode[];
+//   files?: { name: string; isFolder: boolean }[];
+// }
+
+export interface ProjectMetadata {
+	userId: string;
+	projectId: string;
+	name: string;
+	version: string;
+	size: number;
+	updatedAt: string; // comes as string from JSON
+}

@@ -9,32 +9,45 @@ export interface FileSystemNode {
   isFolder?: boolean;
 }
 
-export async function getProject(id: string): Promise<{
+export async function getProject(id: string, version?: string): Promise<{
   strategy: "fat" | "split";
   size: number;
   tree?: FileSystemNode[];
   files?: FileSystemNode[];
 }> {
-  const res = await fetch(`${ASTRA_API}/api/projects/${id}`);
+  // Conditionally build the URL to include the version if it exists.
+  const url = version
+    ? `${ASTRA_API}/api/projects/${id}?version=${version}`
+    : `${ASTRA_API}/api/projects/${id}`;
+
+  const res = await fetch(url, { cache: 'no-store' }); // Use no-store to ensure fresh data for versions
   if (!res.ok) throw new Error("Project not found");
-  // FIX: Wait for the JSON promise to resolve
+  
   const data = await res.json();
-  // console.log(data)
-  return  data
+  return data;
 }
 
-export async function getFileContent(projectId: string, path: string): Promise<string> {
-  const res = await fetch(`${ASTRA_API}/api/projects/${projectId}/files/${path}`);
+export async function getFileContent(projectId: string, path: string, version?: string): Promise<string> {
+  const url = version
+    ? `${ASTRA_API}/api/projects/${projectId}/files/${path}?version=${version}`
+    : `${ASTRA_API}/api/projects/${projectId}/files/${path}`;
+    
+  const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error("File not found");
   return res.text();
 }
 
-export async function saveProject(id: string, tree: FileSystemNode[]): Promise<void> {
-  await fetch(`${ASTRA_API}/api/projects/${id}`, {
+export async function saveProject(id: string, tree: FileSystemNode[]): Promise<any> {
+  const res = await fetch(`/api/projects/${id}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ tree }),
   });
+  if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || 'Failed to save project');
+  }
+  return res.json();
 }
 
 export async function indexProject(id: string): Promise<{ jobId: string }> {
@@ -65,4 +78,24 @@ export function websocket(projectId: string, onUpdate: (data: any) => void) {
   const ws = new WebSocket(`ws://localhost:8080/ws/${projectId}`);
   ws.onmessage = (e) => onUpdate(JSON.parse(e.data));
   return ws;
+}
+
+/**
+ * Fetches a specific version of a project's file tree from Astra.
+ * @param astraSnapshotVersion The timeuuid of the snapshot.
+ * @returns The file system tree.
+ */
+export async function getSnapshotFromAstra(
+  projectId: string,
+  userId: string,
+  astraSnapshotVersion: string
+): Promise<{ tree: FileSystemNode[] }> {
+  const res = await fetch(`${ASTRA_API}/api/projects/${projectId}/snapshots/${astraSnapshotVersion}`, {
+    headers: { "X-User-Id": userId },
+  });
+  if (!res.ok) {
+    if (res.status === 404) return { tree: [] };
+    throw new Error("Failed to fetch snapshot from Astra");
+  }
+  return res.json();
 }

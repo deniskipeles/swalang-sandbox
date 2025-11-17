@@ -14,6 +14,7 @@ interface EditorProps {
   fileName: string;
   content: string | null;
   onContentChange: (content: string) => void;
+  readOnly?: boolean;
 }
 
 const getLanguageExtension = (fileName: string) => {
@@ -46,15 +47,13 @@ const basicExtensions = [
   EditorView.lineWrapping
 ];
 
-const Editor: React.FC<EditorProps> = ({ fileName, content, onContentChange }) => {
+const Editor: React.FC<EditorProps> = ({ fileName, content, onContentChange, readOnly = false }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
 
-  // Effect for initializing and re-initializing the editor when the file changes
   useEffect(() => {
     if (!editorRef.current) return;
 
-    // Destroy the old instance if it exists
     if (viewRef.current) {
       viewRef.current.destroy();
     }
@@ -68,6 +67,7 @@ const Editor: React.FC<EditorProps> = ({ fileName, content, onContentChange }) =
           onContentChange(update.state.doc.toString());
         }
       }),
+      EditorState.readOnly.of(readOnly) // Set read-only state
     ];
 
     if (language) {
@@ -86,15 +86,12 @@ const Editor: React.FC<EditorProps> = ({ fileName, content, onContentChange }) =
 
     viewRef.current = view;
 
-    // The cleanup function is crucial
     return () => {
       viewRef.current?.destroy();
       viewRef.current = null;
     };
-    // This effect should ONLY re-run when the fileName changes.
-  }, [fileName]);
+  }, [fileName, readOnly]); // Re-initialize if fileName or readOnly status changes
 
-  // Effect for synchronizing content from parent to the editor
   useEffect(() => {
     if (viewRef.current && content !== null) {
       const editorContent = viewRef.current.state.doc.toString();
@@ -104,7 +101,6 @@ const Editor: React.FC<EditorProps> = ({ fileName, content, onContentChange }) =
         });
       }
     }
-    // This effect runs when the content prop from the parent changes.
   }, [content]);
 
   if (content === null) {

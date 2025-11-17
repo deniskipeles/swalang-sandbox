@@ -20,7 +20,6 @@ import { CodeIcon } from '@/components/icons/CodeIcon';
 import { TerminalIcon } from '@/components/icons/TerminalIcon';
 
 /* --- Helper Functions --- */
-
 const findNodeById = (nodes: FileSystemNode[], id: string): FileSystemNode | null => {
   for (const node of nodes) {
     if (node.id === id) return node;
@@ -116,9 +115,10 @@ interface ProjectIDEProps {
   strategy: 'fat' | 'split';
   initialTree?: FileSystemNode[];
   initialFiles?: ApiFileSystemNode[];
+  currentVersion?: string;
 }
 
-const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTree, initialFiles }) => {
+const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTree, initialFiles, currentVersion }) => {
   const router = useRouter();
   const [fileSystem, setFileSystem] = useState<FileSystemNode[]>(() => {
     if (strategy === 'fat' && initialTree) return initialTree;
@@ -154,8 +154,17 @@ const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTre
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingContent, setIsLoadingContent] = useState<boolean>(false);
+  
+  const [isReadOnly] = useState(!!currentVersion);
   const [isEditingMode, setIsEditingMode] = useState(false);
   const [activeMobileView, setActiveMobileView] = useState<ActiveMobileView>('editor');
+
+
+  useEffect(() => {
+    if (isReadOnly) {
+      setIsEditingMode(false);
+    }
+  }, [isReadOnly]);
 
   const openFiles = useMemo(() => [...openFileIds].map(id => findFileById(fileSystem, id)).filter((f): f is File => f !== null), [openFileIds, fileSystem]);
   const activeFile = useMemo(() => activeFileId ? findFileById(fileSystem, activeFileId) : null, [activeFileId, fileSystem]);
@@ -192,9 +201,9 @@ const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTre
         }
         return null;
     };
-    const filePath = strategy === 'fat' ? findPathById(fileSystem, file.id) : file.id;
+    const filePath = strategy === 'split' ? file.id : findPathById(fileSystem, file.id);
 
-    if (isEditingMode) {
+    if (isEditingMode && !isReadOnly) {
       setOpenFileIds(prev => new Set(prev).add(file.id));
       setActiveFileId(file.id);
       setSelectedNodeId(file.id);
@@ -211,10 +220,13 @@ const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTre
       }
     } else {
       if (filePath) {
-        router.push(`/project/${projectId}/file/${filePath}`);
+        const url = currentVersion
+          ? `/project/${projectId}/file/${filePath}?version=${currentVersion}`
+          : `/project/${projectId}/file/${filePath}`;
+        router.push(url);
       }
     }
-  }, [isEditingMode, strategy, projectId, fileContents, router, fileSystem]);
+  }, [isEditingMode, strategy, projectId, fileContents, router, fileSystem, currentVersion, isReadOnly]);
 
   const handleMobileFileSelect = useCallback(async (file: File) => {
     await handleFileSelect(file);
@@ -233,11 +245,11 @@ const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTre
     setConsoleLogs(prev => [...prev, 'Saving project...']);
     try {
       const treeToSave = buildFileTreeWithContent(fileSystem, fileContents);
-      await saveProject(projectId, treeToSave);
+      const { version } = await saveProject(projectId, treeToSave);
       setDirtyFileIds(new Set());
-      setConsoleLogs(prev => [...prev, 'Project saved successfully!']);
-    } catch (e) {
-      setConsoleLogs(prev => [...prev, `Error saving project: ${e}`]);
+      setConsoleLogs(prev => [...prev, `Project saved successfully! (Version: ${version.substring(0,8)}...)`]);
+    } catch (e: any) {
+      setConsoleLogs(prev => [...prev, `Error saving project: ${e.message}`]);
     } finally {
       setIsSaving(false);
     }
@@ -318,21 +330,26 @@ const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTre
 
   return (
     <div className="h-screen w-screen bg-gray-100 dark:bg-gray-800 flex flex-col font-sans">
-      {/* Desktop Layout */}
+      {isReadOnly && (
+        <div className="bg-yellow-500/20 text-yellow-800 dark:text-yellow-300 text-center py-1.5 text-sm font-medium">
+          You are viewing a historical version. Editing is disabled.
+        </div>
+      )}
       <div className="hidden md:flex flex-1 overflow-hidden">
         <div className={`transition-all duration-300 ${isSidebarVisible ? 'w-64' : 'w-0'} bg-gray-50 dark:bg-gray-800 flex flex-col`}>
           <div className="flex justify-between items-center p-2 border-b border-gray-200 dark:border-gray-700">
             <h2 className="text-lg font-semibold">Explorer</h2>
             <button
               onClick={() => setIsEditingMode(!isEditingMode)}
-              title={isEditingMode ? "Switch to Navigation Mode" : "Switch to In-Place Editing Mode"}
-              className={`p-1 rounded ${isEditingMode ? 'bg-blue-200 dark:bg-blue-800' : ''} hover:bg-gray-200 dark:hover:bg-gray-700`}
+              disabled={isReadOnly}
+              title={isReadOnly ? "Editing disabled for historical versions" : (isEditingMode ? "Switch to Navigation Mode" : "Switch to In-Place Editing Mode")}
+              className={`p-1 rounded ${isEditingMode ? 'bg-blue-200 dark:bg-blue-800' : ''} hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               <EditIcon />
             </button>
           </div>
           <div className="flex-1 overflow-y-auto">
-            <TreeView data={fileSystem} onFileSelect={handleFileSelect} activeFileId={activeFileId} renamingId={renamingId} onStartRename={setRenamingId} onCancelRename={() => setRenamingId(null)} onRenameNode={handleRenameNode} onNewFile={() => handleCreateNode('file')} onNewFolder={() => handleCreateNode('folder')} onNodeSelect={setSelectedNodeId} selectedNodeId={selectedNodeId} onDeleteNode={handleDeleteNode} onCopyNode={() => {}} />
+            <TreeView data={fileSystem} onFileSelect={handleFileSelect} activeFileId={activeFileId} renamingId={renamingId} onStartRename={setRenamingId} onCancelRename={() => setRenamingId(null)} onRenameNode={handleRenameNode} onNewFile={() => handleCreateNode('file')} onNewFolder={() => handleCreateNode('folder')} onNodeSelect={setSelectedNodeId} selectedNodeId={selectedNodeId} onDeleteNode={handleDeleteNode} onCopyNode={() => {}} readOnly={isReadOnly} />
           </div>
         </div>
         <main className="flex-1 flex flex-col min-w-0">
@@ -340,17 +357,19 @@ const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTre
             <button onClick={() => setSidebarVisible(!isSidebarVisible)} className="p-2 hover:bg-gray-300 dark:hover:bg-gray-700"><MenuIcon /></button>
             <EditorTabs files={openFiles} activeFileId={activeFileId} onTabClick={setActiveFileId} onTabClose={handleTabClose} dirtyFileIds={dirtyFileIds} />
             <div className="ml-auto pr-2 flex items-center space-x-2">
-              <button onClick={handleSaveProject} disabled={isSaving || dirtyFileIds.size === 0} className="p-2 rounded flex items-center space-x-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-500" title="Save Project">
-                <SaveIcon />
-                <span className="text-sm font-medium">{isSaving ? 'Saving...' : 'Save Project'}</span>
-              </button>
+              {!isReadOnly && (
+                <button onClick={handleSaveProject} disabled={isSaving || dirtyFileIds.size === 0} className="p-2 rounded flex items-center space-x-2 bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-500" title="Save Project">
+                  <SaveIcon />
+                  <span className="text-sm font-medium">{isSaving ? 'Saving...' : 'Save Project'}</span>
+                </button>
+              )}
               <button onClick={() => setPreviewVisible(!isPreviewVisible)} disabled={!activeFileId} className="p-2 rounded hover:bg-gray-300 dark:hover:bg-gray-700 disabled:opacity-50" title="Toggle Preview"><PreviewIcon /></button>
             </div>
           </header>
           <div className="flex-1 flex flex-col overflow-y-auto">
             <div className="flex-grow flex">
               <div className={`h-full ${isPreviewVisible && activeFileId ? 'w-1/2' : 'w-full'}`}>
-                <Editor fileName={activeFile?.name || ''} content={isLoadingContent ? "// Loading..." : (activeFileId ? fileContents[activeFileId] ?? null : null)} onContentChange={handleContentChange} />
+                <Editor fileName={activeFile?.name || ''} content={isLoadingContent ? "// Loading..." : (activeFileId ? fileContents[activeFileId] ?? null : null)} onContentChange={handleContentChange} readOnly={isReadOnly || !isEditingMode} />
               </div>
               {isPreviewVisible && activeFileId && (
                 <div className="w-1/2 h-full border-l"><PreviewPane fileName={activeFile?.name || ''} content={fileContents[activeFileId]} /></div>
@@ -363,7 +382,6 @@ const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTre
         </main>
       </div>
       
-      {/* Mobile Layout */}
       <div className="flex md:hidden flex-1 flex-col overflow-hidden">
         <main className="flex-1 overflow-y-auto">
           {activeMobileView === 'explorer' && 
@@ -372,53 +390,23 @@ const ProjectIDE: React.FC<ProjectIDEProps> = ({ projectId, strategy, initialTre
                 <h2 className="text-lg font-semibold">Explorer</h2>
                 <button
                   onClick={() => setIsEditingMode(!isEditingMode)}
-                  title={isEditingMode ? "Editing Mode: Stays on page" : "Navigation Mode: Changes URL"}
-                  className={`p-1 rounded ${isEditingMode ? 'bg-blue-200 dark:bg-blue-800' : ''} hover:bg-gray-200 dark:hover:bg-gray-700`}
+                  disabled={isReadOnly}
+                  title={isReadOnly ? "Editing disabled" : (isEditingMode ? "Editing Mode: Stays on page" : "Navigation Mode: Changes URL")}
+                  className={`p-1 rounded ${isEditingMode ? 'bg-blue-200 dark:bg-blue-800' : ''} hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50`}
                 >
                   <EditIcon />
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto">
-                <TreeView 
-                  data={fileSystem} 
-                  onFileSelect={handleMobileFileSelect} 
-                  activeFileId={activeFileId}
-                  renamingId={renamingId}
-                  onStartRename={setRenamingId}
-                  onCancelRename={() => setRenamingId(null)}
-                  onRenameNode={handleRenameNode}
-                  onNewFile={() => handleCreateNode('file')}
-                  onNewFolder={() => handleCreateNode('folder')}
-                  onNodeSelect={setSelectedNodeId}
-                  selectedNodeId={selectedNodeId}
-                  onDeleteNode={handleDeleteNode}
-                  onCopyNode={() => {}}
-                />
+                <TreeView data={fileSystem} onFileSelect={handleMobileFileSelect} activeFileId={activeFileId} renamingId={renamingId} onStartRename={setRenamingId} onCancelRename={() => setRenamingId(null)} onRenameNode={handleRenameNode} onNewFile={() => handleCreateNode('file')} onNewFolder={() => handleCreateNode('folder')} onNodeSelect={setSelectedNodeId} selectedNodeId={selectedNodeId} onDeleteNode={handleDeleteNode} onCopyNode={() => {}} readOnly={isReadOnly} />
               </div>
             </div>
           }
           {activeMobileView === 'editor' && (
-            <Editor
-              fileName={activeFile?.name || ''}
-              content={isLoadingContent ? "// Loading..." : (activeFileId ? fileContents[activeFileId] ?? null : null)}
-              onContentChange={handleContentChange}
-            />
+            <Editor fileName={activeFile?.name || ''} content={isLoadingContent ? "// Loading..." : (activeFileId ? fileContents[activeFileId] ?? null : null)} onContentChange={handleContentChange} readOnly={isReadOnly || !isEditingMode} />
           )}
-          {activeMobileView === 'preview' && (
-            <PreviewPane
-              fileName={activeFile?.name || ''}
-              content={activeFileId ? fileContents[activeFileId] : null}
-            />
-          )}
-          {activeMobileView === 'console' && 
-            <Console 
-              logs={consoleLogs} 
-              onCommand={() => {}}
-              onRun={handleRunCode}
-              onClear={() => setConsoleLogs([])}
-              isExecuting={isExecuting}
-            />
-          }
+          {activeMobileView === 'preview' && ( <PreviewPane fileName={activeFile?.name || ''} content={activeFileId ? fileContents[activeFileId] : null} /> )}
+          {activeMobileView === 'console' &&  <Console logs={consoleLogs} onCommand={() => {}} onRun={handleRunCode} onClear={() => setConsoleLogs([])} isExecuting={isExecuting} /> }
         </main>
         <nav className="flex items-center bg-gray-200 dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700">
           <MobileNavButton view="explorer" icon={<FilesIcon />} label="Explorer" />

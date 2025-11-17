@@ -25,6 +25,7 @@ interface TreeViewProps {
   selectedNodeId: string | null;
   onDeleteNode: (nodeId: string) => void;
   onCopyNode: (nodeId: string) => void;
+  readOnly?: boolean;
 }
 
 interface TreeItemProps {
@@ -40,10 +41,11 @@ interface TreeItemProps {
     selectedNodeId: string | null;
     onDeleteNode: (nodeId: string) => void;
     onCopyNode: (nodeId: string) => void;
+    readOnly: boolean;
 }
 
 const TreeItem: React.FC<TreeItemProps> = (props) => {
-  const { node, onFileSelect, level, activeFileId, renamingId, onStartRename, onCancelRename, onRenameNode, onNodeSelect, selectedNodeId, onDeleteNode, onCopyNode } = props;
+  const { node, onFileSelect, level, activeFileId, renamingId, onStartRename, onCancelRename, onRenameNode, onNodeSelect, selectedNodeId, onDeleteNode, onCopyNode, readOnly } = props;
   const [isOpen, setIsOpen] = useState(true);
   const [inputValue, setInputValue] = useState(node.name);
   const [isHovered, setIsHovered] = useState(false);
@@ -107,7 +109,6 @@ const TreeItem: React.FC<TreeItemProps> = (props) => {
     <span className="text-sm truncate">{node.name}</span>
   );
 
-
   if (node.type === 'folder') {
     return (
       <div className="text-sm">
@@ -125,7 +126,7 @@ const TreeItem: React.FC<TreeItemProps> = (props) => {
           <FolderIcon className="mx-1 flex-shrink-0"/>
           {nameComponent}
           <div className="ml-auto flex-shrink-0 relative" ref={menuRef}>
-            {(isHovered || isMenuOpen) && !isRenaming && (
+            {(isHovered || isMenuOpen) && !isRenaming && !readOnly && (
               <button 
                 onClick={(e) => { e.stopPropagation(); setIsMenuOpen(prev => !prev); }} 
                 className="p-0.5 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
@@ -164,7 +165,7 @@ const TreeItem: React.FC<TreeItemProps> = (props) => {
       <FileIcon className="mx-1 flex-shrink-0" />
       {nameComponent}
       <div className="ml-auto flex-shrink-0 relative" ref={menuRef}>
-        {(isHovered || isMenuOpen) && !isRenaming && (
+        {(isHovered || isMenuOpen) && !isRenaming && !readOnly && (
           <button 
             onClick={(e) => { e.stopPropagation(); setIsMenuOpen(prev => !prev); }} 
             className="p-0.5 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
@@ -184,20 +185,17 @@ const TreeItem: React.FC<TreeItemProps> = (props) => {
   );
 };
 
-const TreeView: React.FC<TreeViewProps> = ({ data, onFileSelect, activeFileId, renamingId, onStartRename, onCancelRename, onRenameNode, onNewFile, onNewFolder, onNodeSelect, selectedNodeId, onDeleteNode, onCopyNode }) => {
+const TreeView: React.FC<TreeViewProps> = ({ data, onFileSelect, activeFileId, renamingId, onStartRename, onCancelRename, onRenameNode, onNewFile, onNewFolder, onNodeSelect, selectedNodeId, onDeleteNode, onCopyNode, readOnly = false }) => {
   const [searchQuery, setSearchQuery] = useState('');
 
   const filterTree = (nodes: FileSystemNode[], query: string): FileSystemNode[] => {
     if (!query.trim()) {
       return nodes;
     }
-
     const lowerCaseQuery = query.toLowerCase().trim();
-
     const recursivelyFilter = (nodes: FileSystemNode[]): FileSystemNode[] => {
       return nodes.reduce((acc, node) => {
         const nodeNameMatches = node.name.toLowerCase().includes(lowerCaseQuery);
-
         if (node.type === 'folder') {
           const filteredChildren = recursivelyFilter(node.children);
           if (nodeNameMatches || filteredChildren.length > 0) {
@@ -209,7 +207,6 @@ const TreeView: React.FC<TreeViewProps> = ({ data, onFileSelect, activeFileId, r
         return acc;
       }, [] as FileSystemNode[]);
     };
-
     return recursivelyFilter(nodes);
   };
   
@@ -219,23 +216,25 @@ const TreeView: React.FC<TreeViewProps> = ({ data, onFileSelect, activeFileId, r
     <div className="w-full bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200 p-2">
       <div className="flex justify-between items-center mb-2 px-1">
         <h2 className="text-lg font-semibold">Explorer</h2>
-        <div className="flex items-center space-x-1">
-            <button onClick={onNewFile} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" aria-label="New File">
-                <NewFileIcon />
-            </button>
-            <button onClick={onNewFolder} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" aria-label="New Folder">
-                <NewFolderIcon />
-            </button>
-             <button
-              onClick={() => selectedNodeId && onDeleteNode(selectedNodeId)}
-              disabled={!selectedNodeId}
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="Delete"
-              title="Delete selected file or folder"
-            >
-                <DeleteIcon />
-            </button>
-        </div>
+        {!readOnly && (
+          <div className="flex items-center space-x-1">
+              <button onClick={onNewFile} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" aria-label="New File">
+                  <NewFileIcon />
+              </button>
+              <button onClick={onNewFolder} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" aria-label="New Folder">
+                  <NewFolderIcon />
+              </button>
+              <button
+                onClick={() => selectedNodeId && onDeleteNode(selectedNodeId)}
+                disabled={!selectedNodeId}
+                className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Delete"
+                title="Delete selected file or folder"
+              >
+                  <DeleteIcon />
+              </button>
+          </div>
+        )}
       </div>
        <div className="relative mb-2 px-1">
         <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
@@ -265,6 +264,7 @@ const TreeView: React.FC<TreeViewProps> = ({ data, onFileSelect, activeFileId, r
             selectedNodeId={selectedNodeId}
             onDeleteNode={onDeleteNode}
             onCopyNode={onCopyNode}
+            readOnly={readOnly}
         />
       ))}
     </div>

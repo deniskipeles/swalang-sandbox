@@ -13,46 +13,41 @@ import type { GetProjectResponse } from '@/lib/types';
 import { FilesIcon } from '@/components/icons/FilesIcon';
 import { CodeIcon } from '@/components/icons/CodeIcon';
 import { TerminalIcon } from '@/components/icons/TerminalIcon';
+import { AlertTriangle } from 'lucide-react';
 
 // Helper to build a tree from the flat list returned by the 'split' strategy
 const buildTreeFromSplitList = (apiNodes: any[]): FileSystemNode[] => {
     const fileTree: FileSystemNode[] = [];
     const map = new Map<string, FileSystemNode>();
-    apiNodes.sort((a, b) => a.name.localeCompare(b.name)).forEach(node => {
-        const path = node.name;
+    
+    // Ensure nodes are sorted by path depth to build parent directories first
+    const sortedNodes = (apiNodes || []).sort((a, b) => (a.id || a.name).localeCompare(b.id || b.name));
+    
+    sortedNodes.forEach(node => {
+        const path = node.id || node.name;
         const parts = path.split('/');
         const fileName = parts[parts.length - 1];
         const parentPath = parts.slice(0, -1).join('/');
+
         let newNode: FileSystemNode;
         if (node.isFolder) {
             newNode = { id: path, name: fileName, type: 'folder', children: [] };
         } else {
             newNode = { id: path, name: fileName, type: 'file', content: '' };
         }
+        
         map.set(path, newNode);
+
         if (parentPath) {
             const parent = map.get(parentPath);
-            if (parent?.type === 'folder') parent.children.push(newNode);
+            if (parent?.type === 'folder') {
+                parent.children.push(newNode);
+            }
         } else {
             fileTree.push(newNode);
         }
     });
     return fileTree;
-};
-
-// Helper to create a flat list of all files with their full paths for the API
-const flattenFilesForApi = (nodes: FileSystemNode[], contents: Record<string, string>, pathPrefix = ''): { path: string, content: string }[] => {
-    return nodes.flatMap(node => {
-        const newPath = pathPrefix ? `${pathPrefix}/${node.name}` : node.name;
-        if (node.type === 'file') {
-            // Use the unique node.id to get content, but the constructed path for the API
-            return [{ path: newPath, content: contents[node.id] ?? node.content ?? '' }];
-        }
-        if (node.type === 'folder') {
-            return flattenFilesForApi(node.children, contents, newPath);
-        }
-        return [];
-    });
 };
 
 const findFileById = (nodes: FileSystemNode[], id: string): File | null => {
@@ -64,17 +59,32 @@ const findFileById = (nodes: FileSystemNode[], id: string): File | null => {
         }
     }
     return null;
-}
+};
+
+const flattenFilesForApi = (nodes: FileSystemNode[], contents: Record<string, string>, pathPrefix = ''): { path: string, content: string }[] => {
+    return nodes.flatMap(node => {
+        const newPath = pathPrefix ? `${pathPrefix}/${node.name}` : node.name;
+        if (node.type === 'file') {
+            return [{ path: newPath, content: contents[node.id] ?? node.content ?? '' }];
+        }
+        if (node.type === 'folder') {
+            return flattenFilesForApi(node.children, contents, newPath);
+        }
+        return [];
+    });
+};
 
 interface FileIDEViewProps {
     projectId: string;
     initialProject: GetProjectResponse;
     activeFilePath: string;
     initialContent: string;
+    currentVersion?: string;
 }
 
-export default function FileIDEView({ projectId, initialProject, activeFilePath, initialContent }: FileIDEViewProps) {
+export default function FileIDEView({ projectId, initialProject, activeFilePath, initialContent, currentVersion }: FileIDEViewProps) {
     const router = useRouter();
+    const [isReadOnly] = useState(!!currentVersion);
 
     const [fileSystem, setFileSystem] = useState<FileSystemNode[]>(() => 
         initialProject.strategy === 'fat' && initialProject.tree 
@@ -82,9 +92,24 @@ export default function FileIDEView({ projectId, initialProject, activeFilePath,
         : buildTreeFromSplitList(initialProject.files || [])
     );
     
-    const [fileContents, setFileContents] = useState<Record<string, string>>({ [activeFilePath]: initialContent });
-    const [openFileIds, setOpenFileIds] = useState<Set<string>>(new Set([activeFilePath]));
-    const [activeFileId, setActiveFileId] = useState<string | null>(activeFilePath);
+    const findNodeByPath = (nodes: FileSystemNode[], path: string, currentPath = ''): FileSystemNode | null => {
+        for (const node of nodes) {
+            const newPath = currentPath ? `${currentPath}/${node.name}` : node.name;
+            if (newPath === path) return node;
+            if (node.type === 'folder') {
+                const found = findNodeByPath(node.children, path, newPath);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    const initialNode = findNodeByPath(fileSystem, activeFilePath);
+    const initialActiveFileId = initialNode?.id || activeFilePath;
+
+    const [fileContents, setFileContents] = useState<Record<string, string>>({ [initialActiveFileId]: initialContent });
+    const [openFileIds, setOpenFileIds] = useState<Set<string>>(new Set([initialActiveFileId]));
+    const [activeFileId, setActiveFileId] = useState<string | null>(initialActiveFileId);
     const [consoleLogs, setConsoleLogs] = useState<string[]>([`File loaded: ${activeFilePath}`]);
     const [isExecuting, setIsExecuting] = useState(false);
     const [sessionId, setSessionId] = useState<string | null>(null);
@@ -111,7 +136,9 @@ export default function FileIDEView({ projectId, initialProject, activeFilePath,
         return () => ws?.close();
     }, []);
 
+    // CORRECTED LOGIC IS HERE
     const handleFileSelect = useCallback(async (file: File) => {
+        // Re-introduce the robust path finding helper function
         const findPathById = (nodes: FileSystemNode[], nodeId: string, currentPath = ''): string | null => {
             for (const node of nodes) {
                 const newPath = currentPath ? `${currentPath}/${node.name}` : node.name;
@@ -123,13 +150,17 @@ export default function FileIDEView({ projectId, initialProject, activeFilePath,
             }
             return null;
         };
-
-        const filePath = initialProject.strategy === 'split' ? file.id : findPathById(fileSystem, file.id);
-        if (!filePath) return;
+        
+        // Always derive the filePath from the tree structure to handle "fat" loads correctly
+        const filePath = findPathById(fileSystem, file.id);
+        if (!filePath) {
+            console.error("Could not determine file path for navigation.");
+            return;
+        }
 
         if (fileContents[file.id] === undefined) {
             try {
-                const content = await getFileContent(projectId, filePath);
+                const content = await getFileContent(projectId, filePath, currentVersion);
                 setFileContents(prev => ({ ...prev, [file.id]: content }));
             } catch (error) {
                 setFileContents(prev => ({ ...prev, [file.id]: "// Error loading content" }));
@@ -137,8 +168,12 @@ export default function FileIDEView({ projectId, initialProject, activeFilePath,
         }
         setOpenFileIds(prev => new Set(prev).add(file.id));
         setActiveFileId(file.id);
-        router.push(`/project/${projectId}/file/${filePath}`, { scroll: false });
-    }, [projectId, fileContents, router, fileSystem, initialProject.strategy]);
+
+        const url = currentVersion 
+            ? `/project/${projectId}/file/${filePath}?version=${currentVersion}`
+            : `/project/${projectId}/file/${filePath}`;
+        router.push(url, { scroll: false });
+    }, [projectId, fileContents, router, currentVersion, fileSystem]);
 
     const handleMobileFileSelect = useCallback(async (file: File) => {
         await handleFileSelect(file);
@@ -188,7 +223,12 @@ export default function FileIDEView({ projectId, initialProject, activeFilePath,
 
     return (
         <div className="h-screen w-screen bg-gray-100 dark:bg-gray-800 flex flex-col font-sans">
-            {/* Desktop Layout */}
+            {isReadOnly && (
+                <div className="bg-yellow-500/20 text-yellow-800 dark:text-yellow-300 flex items-center justify-center text-center py-1.5 text-sm font-medium">
+                    <AlertTriangle className="h-4 w-4 mr-2" />
+                    You are viewing a historical version. Editing is disabled.
+                </div>
+            )}
             <div className="hidden md:flex flex-1 overflow-hidden">
                 <aside className="w-64 bg-gray-50 dark:bg-gray-800 flex flex-col h-full">
                     <div className="p-2 border-b border-gray-200 dark:border-gray-700">
@@ -207,6 +247,7 @@ export default function FileIDEView({ projectId, initialProject, activeFilePath,
                             }}
                             selectedNodeId={activeFileId}
                             onDeleteNode={()=>{}} onCopyNode={()=>{}}
+                            readOnly={isReadOnly}
                         />
                     </div>
                 </aside>
@@ -228,7 +269,12 @@ export default function FileIDEView({ projectId, initialProject, activeFilePath,
                             <Editor
                                 fileName={activeFile?.name || ''}
                                 content={activeFileId ? fileContents[activeFileId] ?? null : null}
-                                onContentChange={(content) => setFileContents(p => ({...p, [activeFileId!]: content}))}
+                                onContentChange={(content) => {
+                                    if (!isReadOnly) {
+                                      setFileContents(p => ({...p, [activeFileId!]: content}))
+                                    }
+                                }}
+                                readOnly={isReadOnly}
                             />
                         </div>
                         <div className="h-1/3 max-h-96 border-t border-gray-300 dark:border-gray-700">
@@ -244,7 +290,6 @@ export default function FileIDEView({ projectId, initialProject, activeFilePath,
                 </main>
             </div>
 
-            {/* Mobile Layout */}
             <div className="flex md:hidden flex-1 flex-col overflow-hidden">
                 <main className="flex-1 overflow-y-auto">
                     {activeMobileView === 'explorer' && 
@@ -260,13 +305,19 @@ export default function FileIDEView({ projectId, initialProject, activeFilePath,
                             }}
                             selectedNodeId={activeFileId}
                             onDeleteNode={()=>{}} onCopyNode={()=>{}}
+                            readOnly={isReadOnly}
                         />
                     }
                     {activeMobileView === 'editor' &&
                         <Editor
                             fileName={activeFile?.name || ''}
                             content={activeFileId ? fileContents[activeFileId] ?? null : null}
-                            onContentChange={(content) => setFileContents(p => ({...p, [activeFileId!]: content}))}
+                            onContentChange={(content) => {
+                                if (!isReadOnly) {
+                                  setFileContents(p => ({...p, [activeFileId!]: content}))
+                                }
+                            }}
+                            readOnly={isReadOnly}
                         />
                     }
                     {activeMobileView === 'console' &&

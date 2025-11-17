@@ -2,73 +2,88 @@ import { getProject, getFileContent } from "@/lib/astra";
 import { notFound } from "next/navigation";
 import FileIDEView from "@/components/FileIDEView";
 import type { GetProjectResponse } from "@/lib/types";
+import createSupabaseServerClient from "@/lib/supabase/server";
 
-// SEO: Generate dynamic metadata for the specific file page
-export async function generateMetadata({ params }: { params: { id: string; path: string[] } }) {
-  const path = params.path.join("/");
+export async function generateMetadata({ 
+    params, 
+    searchParams 
+}: { 
+    params: { id: string; path: string[] };
+    searchParams?: { version?: string };
+}) {
+  const supabase = await createSupabaseServerClient();
+  const projectId = params.id;
+  const versionId = searchParams?.version;
+  const filePath = params.path.join("/");
+
+  const { data: projectData } = await supabase
+    .from('projects')
+    .select('name')
+    .eq('id', projectId)
+    .single();
+  
+  const projectName = projectData?.name || projectId;
+
+  let versionInfo = '';
+  if (versionId) {
+    const { data: versionData } = await supabase
+      .from('project_versions')
+      .select('version_label')
+      .eq('project_id', projectId)
+      .eq('astra_snapshot_version', versionId)
+      .single();
+    versionInfo = versionData?.version_label || `${versionId.substring(0, 8)}...`;
+  }
+  
+  const title = versionInfo
+    ? `${filePath} at ${versionInfo} - ${projectName}`
+    : `${filePath} - ${projectName}`;
+    
+  const description = `Viewing file ${filePath} in project ${projectName}.`;
+
   return {
-    title: `${path} - ${params.id} | Swalang Sandbox`,
-    description: `Viewing and editing ${path} in project ${params.id}. A live IDE with file tree navigation and code execution.`,
+    title,
+    description,
     openGraph: {
-      title: `${path} - ${params.id}`,
+      title: title,
       description: `Navigate the full project and run your code live.`,
       type: "article",
     },
   };
 }
 
-// SEO: Pre-render all file pages at build time for maximum performance
-export async function generateStaticParams({ params }: { params: { id: string } }) {
-  try {
-    const { strategy, tree, files } = await getProject(params.id);
-    let paths: string[] = [];
-
-    if (strategy === "fat" && tree) {
-      const flatten = (nodes: any[], prefix = ""): string[] => {
-        return nodes.flatMap((n) => {
-          const currentPath = prefix ? `${prefix}/${n.name}` : n.name;
-          return n.type === "folder" ? flatten(n.children, currentPath) : [currentPath];
-        });
-      };
-      paths = flatten(tree);
-    } else if (files) {
-      paths = files.filter((f) => !f.isFolder).map((f) => f.name);
-    }
-    
-    return paths.map((p) => ({ path: p.split("/") }));
-  } catch (error) {
-    console.error(`Could not generate static params for project ${params.id}:`, error);
-    return [];
-  }
-}
-
-// The main page component - a Server Component
-export default async function FilePage({ params }: { params: { id: string; path: string[] } }) {
+export default async function FilePage({ 
+    params,
+    searchParams
+}: { 
+    params: { id: string; path: string[] };
+    searchParams?: { version?: string };
+}) {
   const path = params.path.join("/");
+  const version = searchParams?.version;
   
   try {
-    // Fetch project structure and specific file content in parallel
     const [project, content] = await Promise.all([
-      getProject(params.id),
-      getFileContent(params.id, path)
+      getProject(params.id, version),
+      getFileContent(params.id, path, version)
     ]);
 
     if (!project || content === null) {
       notFound();
     }
     
-    // Pass all initial data to the client component for rendering the interactive IDE
     return (
       <FileIDEView
         projectId={params.id}
         initialProject={project as GetProjectResponse}
         activeFilePath={path}
         initialContent={content}
+        currentVersion={version}
       />
     );
 
   } catch (error) {
-    console.error(`Error loading page for /project/${params.id}/file/${path}:`, error);
+    console.error(`Error loading page for /project/${params.id}/file/${path} (Version: ${version}):`, error);
     notFound();
   }
 }
