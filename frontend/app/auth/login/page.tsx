@@ -1,10 +1,12 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useState, useTransition } from 'react';
 import useSupabaseClient from '@/lib/supabase/client';
-  
-  export default function LoginForm() {
+import SwalangLogoIcon from '@/components/pages/components/icons/SwalangLogoIcon';
+
+export default function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -47,92 +49,132 @@ import useSupabaseClient from '@/lib/supabase/client';
   };
 
   return (
-    <form onSubmit={handleEmailLogin} className="w-full max-w-md space-y-6">
-      {/* Email Input */}
-      <div>
-        <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
-          Email
-        </label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-          placeholder="you@example.com"
-        />
-      </div>
-
-      {/* Password Input */}
-      <div>
-        <div className="flex justify-between items-center mb-1">
-          <label htmlFor="password" className="block text-sm font-medium text-gray-300">
-            Password
-          </label>
-          {/* Optional: "Forgot password?" link */}
+    <div className="min-h-[calc(100vh-4rem)] flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="flex justify-center">
+          <SwalangLogoIcon className="scale-125" />
         </div>
-        <input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-          placeholder="••••••••"
-        />
+        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">
+          Sign in to your account
+        </h2>
+        <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
+          Or{' '}
+          <Link href="/auth/register" className="font-medium text-swa-green hover:text-green-500 transition-colors">
+            create a new account
+          </Link>
+        </p>
       </div>
 
-      {/* Error Message */}
-      {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-white dark:bg-gray-800 py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-gray-200 dark:border-gray-700">
+          <form className="space-y-6" onSubmit={handleEmailLogin}>
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Email address
+              </label>
+              <div className="mt-1">
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-swa-green focus:border-swa-green dark:bg-gray-700 dark:text-white sm:text-sm transition-colors"
+                />
+              </div>
+            </div>
 
-      {/* Submit Button */}
-      <button
-        type="submit"
-        disabled={isPending}
-        className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
-      >
-        {isPending ? 'Signing in...' : 'Sign in'}
-      </button>
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Password
+              </label>
+              <div className="mt-1">
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="appearance-none block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-swa-green focus:border-swa-green dark:bg-gray-700 dark:text-white sm:text-sm transition-colors"
+                />
+              </div>
+            </div>
 
-      {/* Divider */}
-      <div className="flex items-center my-6">
-        <div className="flex-grow border-t border-gray-700"></div>
-        <span className="mx-4 text-gray-500 text-sm font-medium">OR</span>
-        <div className="flex-grow border-t border-gray-700"></div>
+            {error && (
+              <div className="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
+                <div className="flex">
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Login Failed</h3>
+                    <div className="mt-2 text-sm text-red-700 dark:text-red-300">
+                      <p>{error}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <button
+                type="submit"
+                disabled={isPending}
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-gray-900 bg-swa-green hover:bg-green-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-swa-green disabled:opacity-50 disabled:cursor-wait transition-all"
+              >
+                {isPending ? 'Signing in...' : 'Sign in'}
+              </button>
+            </div>
+          </form>
+
+          <div className="mt-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300 dark:border-gray-600" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                  Or continue with
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <div>
+                <button
+                  onClick={loginWithGoogle}
+                  className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-sm font-medium text-gray-500 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                        d="M12.24 10.285V14.4h6.806c-.275 1.765-2.056 5.174-6.806 5.174-4.095 0-7.439-3.389-7.439-7.574s3.345-7.574 7.439-7.574c2.33 0 3.891.989 4.785 1.849l3.204-3.137C18.189 1.186 15.479 0 12.24 0c-6.635 0-12 5.365-12 12s5.365 12 12 12c6.926 0 11.52-4.869 11.52-11.726 0-.788-.085-1.39-.189-1.989H12.24z"
+                        fill="#4285F4"
+                    />
+                  </svg>
+                  <span className="sr-only">Sign in with Google</span>
+                </button>
+              </div>
+
+              <div>
+                <button
+                  onClick={loginWithGitHub}
+                  className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-sm font-medium text-gray-500 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      fillRule="evenodd"
+                      d="M12 2C6.477 2 2 6.484 2 12.008c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.031-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.03 1.595 1.03 2.688 0 3.848-2.338 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  <span className="sr-only">Sign in with GitHub</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-
-      {/* Google Button */}
-      <button
-        type="button"
-        onClick={loginWithGoogle}
-        className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white text-gray-700 font-medium rounded-lg shadow hover:bg-gray-50 transition"
-      >
-        <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            d="M12.24 10.285V14.4h6.806c-.275 1.765-2.056 5.174-6.806 5.174-4.095 0-7.439-3.389-7.439-7.574s3.345-7.574 7.439-7.574c2.33 0 3.891.989 4.785 1.849l3.204-3.137C18.189 1.186 15.479 0 12.24 0c-6.635 0-12 5.365-12 12s5.365 12 12 12c6.926 0 11.52-4.869 11.52-11.726 0-.788-.085-1.39-.189-1.989H12.24z"
-            fill="#4285F4"
-          />
-        </svg>
-        Continue with Google
-      </button>
-
-      {/* GitHub Button */}
-      <button
-        type="button"
-        onClick={loginWithGitHub}
-        className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-gray-900 text-white font-medium rounded-lg border border-gray-700 hover:bg-gray-800 transition"
-      >
-        <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            fill="currentColor"
-            d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.6.111.82-.254.82-.564v-2.12c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386C24 5.373 18.627 0 12 0z"
-          />
-        </svg>
-        Continue with GitHub
-      </button>
-    </form>
+    </div>
   );
 }

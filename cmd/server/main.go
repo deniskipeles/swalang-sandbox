@@ -1,3 +1,4 @@
+// =========================== /teamspace/studios/this_studio/next-projects/swalang-sandbox/cmd/server/main.go ===========================
 package main
 
 import (
@@ -297,35 +298,91 @@ func executeAndStream(conn *websocket.Conn, sessionID string) {
 		sendJSONError(conn, "session not found", nil)
 		return
 	}
-	codeVal, ok := sessionVal.(*PlaygroundSession).Files.Load("main.sw")
-	if !ok {
-		sendJSONError(conn, "file 'main.sw' not found", nil)
-		return
-	}
+
+	// Access the session data
+	sessionData := sessionVal.(*PlaygroundSession)
+
+	// Create a temporary directory for execution
 	tempDir, err := os.MkdirTemp("", "swalang-exec-*")
 	if err != nil {
 		sendJSONError(conn, "failed to create execution directory", err)
 		return
 	}
 	defer os.RemoveAll(tempDir)
-	if err := os.WriteFile(filepath.Join(tempDir, "main.sw"), []byte(codeVal.(string)), 0644); err != nil {
-		sendJSONError(conn, "failed to write code to file", err)
+
+	var hasEntry bool = false
+	var writeErr error
+
+	// Iterate over all files in the session and write them to disk
+	sessionData.Files.Range(func(key, value interface{}) bool {
+		relPath, ok := key.(string)
+		if !ok {
+			return true
+		}
+		content, ok := value.(string)
+		if !ok {
+			return true
+		}
+
+		// Clean the path and ensure it doesn't traverse directories dangerously
+		cleanPath := filepath.Clean(relPath)
+		if strings.Contains(cleanPath, "..") || strings.HasPrefix(cleanPath, "/") || strings.HasPrefix(cleanPath, "\\") {
+			log.Printf("Skipping potentially unsafe file path: %s", relPath)
+			return true
+		}
+
+		fullPath := filepath.Join(tempDir, cleanPath)
+		dir := filepath.Dir(fullPath)
+
+		// Create subdirectories if needed
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			writeErr = fmt.Errorf("failed to create directory %s: %w", dir, err)
+			return false // Stop iteration on error
+		}
+
+		// Write the file content
+		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+			writeErr = fmt.Errorf("failed to write file %s: %w", fullPath, err)
+			return false // Stop iteration on error
+		}
+
+		// Check if this is the entry point
+		if cleanPath == "main.sw" {
+			hasEntry = true
+		}
+
+		return true
+	})
+
+	if writeErr != nil {
+		sendJSONError(conn, "failed to prepare project files", writeErr)
 		return
 	}
+
+	if !hasEntry {
+		sendJSONError(conn, "file 'main.sw' not found in uploaded files", nil)
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+
 	var swalang_binary = "/usr/local/bin/swalang"
 	if os.Getenv("SWALANG_PATH") != "" {
 		swalang_binary = os.Getenv("SWALANG_PATH")
 	}
+
+	// Run swalang with main.sw as the entry point, inside the tempDir
 	cmd := exec.CommandContext(ctx, swalang_binary, "main.sw")
 	cmd.Dir = tempDir
 	stdoutPipe, _ := cmd.StdoutPipe()
 	stderrPipe, _ := cmd.StderrPipe()
+
 	if err := cmd.Start(); err != nil {
 		sendJSONError(conn, "failed to start execution", err)
 		return
 	}
+
 	go streamPipe(conn, stdoutPipe, "stdout")
 	go streamPipe(conn, stderrPipe, "stderr")
 	cmd.Wait()
