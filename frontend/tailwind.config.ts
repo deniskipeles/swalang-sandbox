@@ -15,6 +15,19 @@ const config: Config = {
         'swa-gray': '#1a1a1a',
         'swa-light-gray': '#a0a0a0',
         'swa-code-bg': '#1e1e1e',
+        // '======new lines=====': '==================',
+        'swalang-dark': '#1a1a2e',
+        'swalang-blue': '#16213e',
+        'swalang-purple': '#0f3460',
+        'swalang-accent': '#e94560',
+        'swalang-light': '#c0c0c0',
+
+        // Light mode colors
+        'swalang-light-bg': '#f8f9fa',
+        'swalang-light-surface': '#ffffff',
+        'swalang-light-text': '#212529',
+        'swalang-light-subtle': '#6c757d',
+        'swalang-light-border': '#dee2e6',
       },
       fontFamily: {
         sans: ['var(--font-source-sans-pro)'],

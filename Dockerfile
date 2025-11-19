@@ -18,7 +18,7 @@ RUN chmod +x /usr/local/bin/swalang
 
 
 # Expose the correct port
-EXPOSE 8080
+EXPOSE 8000
 
 # Reconstruct the Astra bundle *safely* at runtime
 ENTRYPOINT ["/bin/sh", "-c", "\

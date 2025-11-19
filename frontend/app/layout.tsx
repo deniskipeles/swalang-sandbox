@@ -37,6 +37,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${sourceSansPro.variable} ${sourceCodePro.variable} ${architectsDaughter.variable}`} suppressHydrationWarning>
       <head>
+        <link rel="icon" href="/favicon.png" />
         {/*
           The script below is to prevent a flash of the incorrect theme (FOUC).
           It's placed in the head and runs before React renders.

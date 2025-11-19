@@ -61,11 +61,16 @@ type SimilarResult struct {
 
 /* ---------- Playground Session Types ---------- */
 
-// PlaygroundSession holds the data for a temporary, in-memory session.
 type PlaygroundSession struct {
-	Files     *sync.Map // Key: path (string), Value: content (string)
+	Files     *sync.Map
 	Logs      string
 	CreatedAt time.Time
+}
+
+/* ---------- Snapshot Cache ---------- */
+type SnapshotCacheItem struct {
+	Tree     []FileSystemNode
+	CachedAt time.Time
 }
 
 /* ---------- Globals ---------- */
@@ -84,6 +89,9 @@ var (
 
 	// Embedding
 	embedder Embedder
+
+	// Global cache for project snapshots
+	snapshotCache = &sync.Map{} // key (projectID@version) -> *SnapshotCacheItem
 )
 
 /* ---------- Embedder ---------- */
@@ -147,7 +155,6 @@ func connectAstra() {
 
 /* ---------- Playground Session Cleanup ---------- */
 
-// startSessionCleanup periodically removes old in-memory sessions.
 func startSessionCleanup(interval time.Duration, maxAge time.Duration) {
 	ticker := time.NewTicker(interval)
 	go func() {
@@ -168,10 +175,7 @@ func startSessionCleanup(interval time.Duration, maxAge time.Duration) {
 /* ---------- Main ---------- */
 
 func main() {
-	// Start the in-memory session garbage collector
 	startSessionCleanup(5*time.Minute, 15*time.Minute)
-
-	// Setup Astra (optional — if env vars missing, skip)
 	connectAstra()
 	defer func() {
 		if session != nil {
@@ -179,32 +183,25 @@ func main() {
 		}
 	}()
 
-	// Embedder
 	embedder = &MockEmbedder{}
 
-	// Gin
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 	r.Use(corsMiddleware())
 
-	r.GET("/", func(c *gin.Context) {
-		c.File("static/index.html")
-	})
+	r.GET("/", func(c *gin.Context) { c.File("static/index.html") })
 
-	// ======== PLAYGROUND SESSION API (In-Memory) ========
 	sessionAPI := r.Group("/api")
 	{
 		sessionAPI.POST("/session/new", newPlaygroundSessionHandler)
 		sessionAPI.POST("/session/:id/files", uploadPlaygroundFileHandler)
 		sessionAPI.GET("/session/:id/ws", wsPlaygroundHandler)
-		// Deprecated REST endpoints, kept for compatibility if needed.
 		sessionAPI.POST("/session/:id/run", runPlaygroundHandler)
 		sessionAPI.GET("/session/:id/logs", logsPlaygroundHandler)
 	}
 
-	// ======== PERSISTENT PROJECT API (Astra DB) ========
 	if session != nil {
 		projectAPI := r.Group("/api")
 		{
@@ -219,24 +216,14 @@ func main() {
 		r.GET("/ws/:projectId", handleWS)
 	}
 
-	r.GET("/health", health)
-	r.GET("/healthz", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
-	})
-	
+	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	srv := &http.Server{
-		Addr:         ":" + port,
-		Handler:      r,
-		WriteTimeout: 15 * time.Second,
-		ReadTimeout:  15 * time.Second,
-	}
-
+	srv := &http.Server{Addr: ":" + port, Handler: r}
 	go func() {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
@@ -244,17 +231,12 @@ func main() {
 		log.Println("Shutting down server...")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := srv.Shutdown(ctx); err != nil {
-			log.Printf("Server shutdown error: %v", err)
-		}
+		srv.Shutdown(ctx)
 	}()
 
 	log.Printf("🚀 Server starting on port %s", port)
-	log.Println("✨ Playground features (In-Memory) enabled")
 	if session != nil {
 		log.Println("✨ Persistent Project features (Astra DB) enabled")
-	} else {
-		log.Println("⚠️  Persistent Project features disabled (missing ASTRA_BUNDLE or ASTRA_TOKEN)")
 	}
 	log.Fatal(srv.ListenAndServe())
 }
@@ -263,22 +245,13 @@ func main() {
 
 func newPlaygroundSessionHandler(c *gin.Context) {
 	sessionID := uuid.New().String()
-	newSession := &PlaygroundSession{
-		Files:     &sync.Map{},
-		CreatedAt: time.Now(),
-	}
-	playgroundSessions.Store(sessionID, newSession)
-
+	playgroundSessions.Store(sessionID, &PlaygroundSession{Files: &sync.Map{}, CreatedAt: time.Now()})
 	wsScheme := "ws"
 	if c.Request.TLS != nil {
 		wsScheme = "wss"
 	}
 	wsURL := fmt.Sprintf("%s://%s/api/session/%s/ws", wsScheme, c.Request.Host, sessionID)
-
-	c.JSON(http.StatusOK, gin.H{
-		"session_id": sessionID,
-		"ws_url":     wsURL,
-	})
+	c.JSON(http.StatusOK, gin.H{"session_id": sessionID, "ws_url": wsURL})
 }
 
 func uploadPlaygroundFileHandler(c *gin.Context) {
@@ -287,25 +260,16 @@ func uploadPlaygroundFileHandler(c *gin.Context) {
 		Path    string `json:"path"`
 		Content string `json:"content"`
 	}
-
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
-
-	cleanPath := filepath.Clean(req.Path)
-	if strings.HasPrefix(cleanPath, "..") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file path"})
-		return
-	}
-
 	session, ok := playgroundSessions.Load(sessionID)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
 		return
 	}
-
-	session.(*PlaygroundSession).Files.Store(cleanPath, req.Content)
+	session.(*PlaygroundSession).Files.Store(filepath.Clean(req.Path), req.Content)
 	c.Status(http.StatusCreated)
 }
 
@@ -313,17 +277,12 @@ func wsPlaygroundHandler(c *gin.Context) {
 	sessionID := c.Param("id")
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Printf("Failed to upgrade connection for session %s: %v", sessionID, err)
 		return
 	}
 	defer conn.Close()
-
 	for {
 		var msg map[string]string
 		if err := conn.ReadJSON(&msg); err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("WebSocket closed unexpectedly for session %s: %v", sessionID, err)
-			}
 			break
 		}
 		if action, ok := msg["action"]; ok && action == "run" {
@@ -335,64 +294,47 @@ func wsPlaygroundHandler(c *gin.Context) {
 func executeAndStream(conn *websocket.Conn, sessionID string) {
 	sessionVal, ok := playgroundSessions.Load(sessionID)
 	if !ok {
-		sendJSONError(conn, "session not found", fmt.Errorf("invalid session id %s", sessionID))
+		sendJSONError(conn, "session not found", nil)
 		return
 	}
-	session := sessionVal.(*PlaygroundSession)
-
-	codeVal, ok := session.Files.Load("main.sw")
+	codeVal, ok := sessionVal.(*PlaygroundSession).Files.Load("main.sw")
 	if !ok {
-		sendJSONError(conn, "file 'main.sw' not found in session", nil)
+		sendJSONError(conn, "file 'main.sw' not found", nil)
 		return
 	}
-	code := codeVal.(string)
-
 	tempDir, err := os.MkdirTemp("", "swalang-exec-*")
 	if err != nil {
 		sendJSONError(conn, "failed to create execution directory", err)
 		return
 	}
 	defer os.RemoveAll(tempDir)
-
-	entrypointPath := filepath.Join(tempDir, "main.sw")
-	if err := os.WriteFile(entrypointPath, []byte(code), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tempDir, "main.sw"), []byte(codeVal.(string)), 0644); err != nil {
 		sendJSONError(conn, "failed to write code to file", err)
 		return
 	}
-
-	binPath := os.Getenv("SWALANG_PATH")
-	if binPath == "" {
-		binPath = "/usr/local/bin/swalang" // Default path
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-
-	cmd := exec.CommandContext(ctx, binPath, "main.sw")
+	var swalang_binary = "/usr/local/bin/swalang"
+	if os.Getenv("SWALANG_PATH") != "" {
+		swalang_binary = os.Getenv("SWALANG_PATH")
+	}
+	cmd := exec.CommandContext(ctx, swalang_binary, "main.sw")
 	cmd.Dir = tempDir
-
 	stdoutPipe, _ := cmd.StdoutPipe()
 	stderrPipe, _ := cmd.StderrPipe()
-
 	if err := cmd.Start(); err != nil {
 		sendJSONError(conn, "failed to start execution", err)
 		return
 	}
-
 	go streamPipe(conn, stdoutPipe, "stdout")
 	go streamPipe(conn, stderrPipe, "stderr")
-
 	cmd.Wait()
 }
 
 func streamPipe(conn *websocket.Conn, pipe io.ReadCloser, streamType string) {
 	scanner := bufio.NewScanner(pipe)
 	for scanner.Scan() {
-		message := map[string]string{"type": streamType, "content": scanner.Text()}
-		if err := conn.WriteJSON(message); err != nil {
-			log.Printf("Failed to write to WebSocket: %v", err)
-			break
-		}
+		conn.WriteJSON(map[string]string{"type": streamType, "content": scanner.Text()})
 	}
 }
 
@@ -400,33 +342,53 @@ func sendJSONError(conn *websocket.Conn, message string, err error) {
 	errMsg := message
 	if err != nil {
 		errMsg = message + ": " + err.Error()
-		log.Printf("%s: %v", message, err)
 	}
-	errorMsg := map[string]string{"type": "error", "content": errMsg}
-	conn.WriteJSON(errorMsg)
+	conn.WriteJSON(map[string]string{"type": "error", "content": errMsg})
 }
 
-// runPlaygroundHandler is a deprecated REST endpoint for running code.
 func runPlaygroundHandler(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "Please use the WebSocket connection to run code."})
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Please use WebSocket"})
 }
 
-// logsPlaygroundHandler is a deprecated REST endpoint for fetching logs.
 func logsPlaygroundHandler(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{"error": "Logs are streamed via the WebSocket connection."})
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Please use WebSocket"})
 }
 
 /* ============ PROJECT API HANDLERS (Astra DB) ============ */
 
 func getProject(c *gin.Context) {
 	projID := c.Param("id")
+	versionStr := c.Query("version")
+
+	if versionStr != "" {
+		versionUUID, err := gocql.ParseUUID(versionStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid version UUID format"})
+			return
+		}
+		tree := loadFatWithCache(projID, &versionUUID)
+		if tree == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "project or version not found"})
+			return
+		}
+		raw, _ := json.Marshal(tree)
+		size := len(raw)
+		if size < 1*1024*1024 {
+			c.JSON(http.StatusOK, gin.H{"strategy": "fat", "size": size, "tree": tree, "version": versionUUID.String()})
+		} else {
+			files := flattenTree(tree, "")
+			c.JSON(http.StatusOK, gin.H{"strategy": "split", "size": size, "fileCount": len(files), "files": files, "version": versionUUID.String()})
+		}
+		return
+	}
+
 	size, err := projectSize(projID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
 		return
 	}
 	if size < 1*1024*1024 {
-		tree := loadFat(projID)
+		tree := loadFatWithCache(projID, nil)
 		c.JSON(http.StatusOK, gin.H{"strategy": "fat", "size": size, "tree": tree})
 		return
 	}
@@ -447,6 +409,28 @@ func getSize(c *gin.Context) {
 func getFile(c *gin.Context) {
 	projID := c.Param("id")
 	filePath := c.Param("path")[1:]
+	versionStr := c.Query("version")
+
+	if versionStr != "" {
+		versionUUID, err := gocql.ParseUUID(versionStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid version UUID format"})
+			return
+		}
+		tree := loadFatWithCache(projID, &versionUUID)
+		if tree == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "project or version not found"})
+			return
+		}
+		foundFile := findFileInTree(tree, filePath)
+		if foundFile == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "file not found in this version"})
+			return
+		}
+		c.Data(http.StatusOK, "text/plain", []byte(foundFile.Content))
+		return
+	}
+
 	node := getSplitFile(projID, filePath)
 	if node.Name == "" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "file not found"})
@@ -469,7 +453,7 @@ func postProject(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	broadcast(projID, map[string]interface{}{"type": "update", "version": version, "size": size, "at": time.Now().Unix()})
+	broadcast(projID, map[string]interface{}{"type": "update", "version": version, "size": size})
 	c.JSON(http.StatusCreated, gin.H{"projectId": projID, "version": version, "size": size})
 }
 
@@ -569,45 +553,70 @@ func broadcast(projectID string, msg interface{}) {
 	}
 }
 
-func health(c *gin.Context) {
-	status := gin.H{"status": "ok", "ts": time.Now().Unix()}
-	if session != nil {
-		status["astra"] = "connected"
-	} else {
-		status["astra"] = "disconnected"
-	}
-	status["playground"] = "in-memory"
-	c.JSON(http.StatusOK, status)
-}
-
 /* ============ Astra Data Helpers ============ */
 
 func projectSize(projectID string) (int, error) {
 	var size int
-	err := session.Query(`SELECT size FROM project_snapshots WHERE project_id=? LIMIT 1`, projectID).Scan(&size)
+	err := session.Query(`SELECT size FROM project_snapshots WHERE project_id=? ORDER BY version DESC LIMIT 1`, projectID).Scan(&size)
 	return size, err
 }
 
-func loadFat(projectID string) []FileSystemNode {
+func loadFat(projectID string, version *gocql.UUID) []FileSystemNode {
 	var raw string
-	err := session.Query(`SELECT snapshot FROM project_snapshots WHERE project_id = ? ORDER BY version DESC LIMIT 1`, projectID).
-		Consistency(gocql.One).
-		Scan(&raw)
+	var err error
+	var q *gocql.Query
+	cql := `SELECT snapshot FROM project_snapshots WHERE project_id = ?`
+	if version != nil {
+		cql += ` AND version = ? LIMIT 1`
+		q = session.Query(cql, projectID, *version)
+	} else {
+		cql += ` ORDER BY version DESC LIMIT 1`
+		q = session.Query(cql, projectID)
+	}
+	err = q.Consistency(gocql.One).Scan(&raw)
 	if err != nil {
+		log.Printf("Failed to load snapshot for project %s (version: %v): %v", projectID, version, err)
 		return nil
 	}
 	var tree []FileSystemNode
-	json.Unmarshal([]byte(raw), &tree)
+	if err := json.Unmarshal([]byte(raw), &tree); err != nil {
+		log.Printf("Failed to unmarshal snapshot for project %s: %v", projectID, err)
+		return nil
+	}
+	return tree
+}
+
+func loadFatWithCache(projectID string, version *gocql.UUID) []FileSystemNode {
+	const cacheDuration = 2 * time.Minute
+	key := fmt.Sprintf("%s@latest", projectID)
+	if version != nil {
+		key = fmt.Sprintf("%s@%s", projectID, version.String())
+	}
+	if item, ok := snapshotCache.Load(key); ok {
+		cachedItem := item.(*SnapshotCacheItem)
+		if time.Since(cachedItem.CachedAt) < cacheDuration {
+			log.Printf("CACHE HIT for %s", key)
+			return cachedItem.Tree
+		}
+		log.Printf("CACHE EXPIRED for %s", key)
+	}
+	log.Printf("CACHE MISS for %s", key)
+	tree := loadFat(projectID, version)
+	if tree != nil {
+		snapshotCache.Store(key, &SnapshotCacheItem{
+			Tree:     tree,
+			CachedAt: time.Now(),
+		})
+	}
 	return tree
 }
 
 func listFiles(projectID string) []FileSystemNode {
-	iter := session.Query(`SELECT path,name,is_folder,updated_at FROM project_files WHERE project_id=?`).Iter()
+	iter := session.Query(`SELECT path,name,is_folder FROM project_files WHERE project_id=?`, projectID).Iter()
 	var nodes []FileSystemNode
 	var p, name string
 	var folder bool
-	var t time.Time
-	for iter.Scan(&p, &name, &folder, &t) {
+	for iter.Scan(&p, &name, &folder) {
 		nodes = append(nodes, FileSystemNode{Name: name, Type: map[bool]string{true: "folder", false: "file"}[folder], IsFolder: folder})
 	}
 	iter.Close()
@@ -621,17 +630,19 @@ func getSplitFile(projectID, filePath string) FileSystemNode {
 	return f
 }
 
-func saveHybrid(projectID string, tree []FileSystemNode) (version string, size int, err error) {
+func saveHybrid(projectID string, tree []FileSystemNode) (string, int, error) {
 	raw, _ := json.Marshal(tree)
 	ver := gocql.TimeUUID()
-	size = len(raw)
-	now := time.Now()
+	size := len(raw)
 	batch := session.NewBatch(gocql.LoggedBatch)
-	batch.Query(`INSERT INTO project_snapshots (project_id,version,snapshot,size,updated_at) VALUES (?,?,?,?,?)`, projectID, ver, string(raw), size, now)
-	insertSplitBatch(projectID, tree, "", batch, now)
-	if err = session.ExecuteBatch(batch); err != nil {
+	batch.Query(`INSERT INTO project_snapshots (project_id,version,snapshot,size,updated_at) VALUES (?,?,?,?,?)`, projectID, ver, string(raw), size, time.Now())
+	insertSplitBatch(projectID, tree, "", batch, time.Now())
+	if err := session.ExecuteBatch(batch); err != nil {
 		return "", 0, err
 	}
+	// Invalidate cache on save
+	snapshotCache.Delete(fmt.Sprintf("%s@latest", projectID))
+	log.Printf("CACHE INVALIDATED for %s@latest", projectID)
 	return ver.String(), size, nil
 }
 
@@ -716,4 +727,48 @@ func searchSimilar(projectID string, queryVec []float32, limit int) ([]SimilarRe
 
 func checksum(s string) string {
 	return fmt.Sprintf("%x", md5.Sum([]byte(s)))
+}
+
+/* ============ NEW HELPER FUNCTIONS for Versioning ============ */
+
+func flattenTree(nodes []FileSystemNode, prefix string) []FileSystemNode {
+	var fileList []FileSystemNode
+	for _, n := range nodes {
+		flatNode := FileSystemNode{
+			ID:       path.Join(prefix, n.Name),
+			Name:     n.Name,
+			Type:     n.Type,
+			IsFolder: n.IsFolder,
+		}
+		fileList = append(fileList, flatNode)
+		if n.Type == "folder" && len(n.Children) > 0 {
+			p := path.Join(prefix, n.Name)
+			fileList = append(fileList, flattenTree(n.Children, p)...)
+		}
+	}
+	return fileList
+}
+
+func findFileInTree(nodes []FileSystemNode, targetPath string) *FileSystemNode {
+	parts := strings.SplitN(targetPath, "/", 2)
+	head := parts[0]
+	tail := ""
+	if len(parts) > 1 {
+		tail = parts[1]
+	}
+	for i := range nodes {
+		node := &nodes[i]
+		if node.Name == head {
+			if tail == "" {
+				if node.Type == "file" {
+					return node
+				}
+				return nil
+			}
+			if node.Type == "folder" {
+				return findFileInTree(node.Children, tail)
+			}
+		}
+	}
+	return nil
 }

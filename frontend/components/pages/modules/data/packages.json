@@ -1,0 +1,123 @@
+
+[
+  {
+    "name": "swalang-router",
+    "version": "3.1.2",
+    "description": "A powerful and flexible client-side router for Swalang applications.",
+    "author": "Swalang Core Team",
+    "keywords": ["router", "spa", "navigation", "web"],
+    "readme": "# Swalang Router\n\nA declarative, component-based router for Swalang.\n\n## Usage\n\n```swalang\nimport { Router, Route } from 'swalang-router';\n\ncomponent App {\n  render() {\n    return (\n      <Router>\n        <Route path=\"/\" component={HomePage} />\n        <Route path=\"/about\" component={AboutPage} />\n      </Router>\n    );\n  }\n}\n```"
+  },
+  {
+    "name": "swift-fetch",
+    "version": "1.4.5",
+    "description": "A modern, promise-based HTTP client for Swalang, inspired by fetch.",
+    "author": "Ava Sharma",
+    "keywords": ["http", "fetch", "ajax", "request", "api"],
+    "readme": "# Swift Fetch\n\nAn isomorphic HTTP client for the browser and server-side Swalang.\n\n## Usage\n\n```swalang\nimport swiftFetch from 'swift-fetch';\n\nasync func getUser(id) {\n  let response = await swiftFetch.get(`/api/users/${id}`);\n  return response.json();\n}\n```"
+  },
+  {
+    "name": "chrono-kit",
+    "version": "2.8.1",
+    "description": "A comprehensive library for parsing, validating, manipulating, and formatting dates in Swalang.",
+    "author": "TimeKeepers Inc.",
+    "keywords": ["date", "time", "moment", "timezone", "format"],
+    "readme": "# Chrono Kit\n\nYour one-stop solution for all things date and time in Swalang.\n\n## Usage\n\n```swalang\nimport chrono from 'chrono-kit';\n\n// Get the current date formatted\nlet today = chrono().format('YYYY-MM-DD');\n\n// Add 7 days to today\nlet nextWeek = chrono().add(7, 'days');\n```"
+  },
+  {
+    "name": "glimmer-ui",
+    "version": "0.9.3",
+    "description": "A beautiful and accessible component library for building modern Swalang interfaces.",
+    "author": "DesignSys",
+    "keywords": ["ui", "components", "design-system", "react", "frontend"],
+    "readme": "# Glimmer UI\n\nBuild stunning UIs faster with a rich set of pre-built components.\n\n## Usage\n\n```swalang\nimport { Button, Card } from 'glimmer-ui';\n\ncomponent MyComponent {\n  render() {\n    return (\n      <Card title=\"Welcome\">\n        <p>This is a Glimmer card.</p>\n        <Button variant=\"primary\">Click Me</Button>\n      </Card>\n    );\n  }\n}\n```"
+  },
+  {
+    "name": "quantum-state",
+    "version": "4.0.1",
+    "description": "A predictable state management library for Swalang, inspired by Redux and MobX.",
+    "author": "Leo Chen",
+    "keywords": ["state-management", "redux", "store", "global-state"],
+    "readme": "# Quantum State\n\nManage your application's state with simplicity and power.\n\n## Usage\n\n```swalang\nimport { createStore } from 'quantum-state';\n\nlet counterStore = createStore({\n  count: 0,\n  increment() {\n    this.count++;\n  }\n});\n\n// In a component\ncounterStore.increment();\n```"
+  },
+  {
+    "name": "swalang-charts",
+    "version": "1.2.0",
+    "description": "Create beautiful and interactive charts and graphs with Swalang.",
+    "author": "DataViz Co.",
+    "keywords": ["charts", "graphs", "dataviz", "d3", "visualization"],
+    "readme": "# Swalang Charts\n\nBring your data to life with our charting library.\n\n## Usage\n\n```swalang\nimport { BarChart } from 'swalang-charts';\n\nconst data = [\n  { name: 'Jan', value: 30 },\n  { name: 'Feb', value: 45 },\n];\n\ncomponent SalesChart {\n  render() {\n    return <BarChart data={data} />;\n  }\n}\n```"
+  },
+  {
+    "name": "neuro-matrix",
+    "version": "0.5.6",
+    "description": "A lightweight and fast library for numerical computing and matrix operations in Swalang.",
+    "author": "SciCompute Collective",
+    "keywords": ["math", "matrix", "linear-algebra", "data-science", "numpy"],
+    "readme": "# Neuro Matrix\n\nPerform complex numerical operations with an easy-to-use API.\n\n## Usage\n\n```swalang\nimport { matrix } from 'neuro-matrix';\n\nlet a = matrix([[1, 2], [3, 4]]);\nlet b = matrix([[5, 6], [7, 8]]);\n\n// Matrix multiplication\nlet result = a.dot(b);\nresult.print();\n```"
+  },
+  {
+    "name": "env-guard",
+    "version": "1.1.0",
+    "description": "Load environment variables from .env files with validation.",
+    "author": "SecureWorks",
+    "keywords": ["env", "config", "environment", "dotenv", "security"],
+    "readme": "# Env Guard\n\nSafely manage your environment variables.\n\n## Usage\n\n```swalang\n// in .env\n// API_KEY=yoursecretkey\n\nimport env from 'env-guard';\n\n// Access your variables\nconst apiKey = env.get('API_KEY');\n```"
+  },
+  {
+    "name": "md-parser",
+    "version": "2.3.0",
+    "description": "A fast and extensible Markdown parser for Swalang.",
+    "author": "Kenji Tanaka",
+    "keywords": ["markdown", "parser", "html", "compiler"],
+    "readme": "# MD Parser\n\nConvert Markdown to HTML securely and efficiently.\n\n## Usage\n\n```swalang\nimport { parse } from 'md-parser';\n\nlet markdownText = '# Hello, World!';\nlet html = parse(markdownText);\n// html is '<h1>Hello, World!</h1>'\n```"
+  },
+  {
+    "name": "aether-orm",
+    "version": "0.8.4",
+    "description": "A modern ORM for Swalang that supports PostgreSQL, MySQL, and SQLite.",
+    "author": "Database Innovators",
+    "keywords": ["orm", "database", "sql", "postgresql", "mysql"],
+    "readme": "# Aether ORM\n\nInteract with your database using Swalang objects.\n\n## Usage\n\n```swalang\nimport { User } from 'models';\n\nasync func findUser(id) {\n  // Finds a user by their ID\n  const user = await User.findById(id);\n  return user;\n}\n```"
+  },
+  {
+    "name": "swalang-i18n",
+    "version": "2.0.0",
+    "description": "A complete internationalization framework for Swalang applications.",
+    "author": "GlobalizeJS",
+    "keywords": ["i18n", "translation", "localization", "internationalization"],
+    "readme": "# Swalang i18n\n\nMake your application available to a global audience.\n\n## Usage\n\n```swalang\n// locales/en.json\n// { \"greeting\": \"Hello, {name}!\" }\n\nimport i18n from 'swalang-i18n';\n\n// In a component\nconst translated = i18n.t('greeting', { name: 'Alice' });\n```"
+  },
+  {
+    "name": "validator-pro",
+    "version": "5.2.1",
+    "description": "A library of string validators and sanitizers. From emails to credit cards.",
+    "author": "Guardians of Code",
+    "keywords": ["validation", "validator", "security", "forms", "sanitizer"],
+    "readme": "# Validator Pro\n\nValidate and sanitize strings with ease.\n\n## Usage\n\n```swalang\nimport validator from 'validator-pro';\n\nlet email = 'test@example.com';\n\nif (validator.isEmail(email)) {\n  print('Valid email!');\n}\n```"
+  },
+  {
+    "name": "pixel-magic",
+    "version": "0.4.0",
+    "description": "An easy-to-use image manipulation library for Swalang.",
+    "author": "Clara Evans",
+    "keywords": ["image", "graphics", "canvas", "resize", "filter"],
+    "readme": "# Pixel Magic\n\nCrop, resize, and apply filters to images.\n\n## Usage\n\n```swalang\nimport PixelMagic from 'pixel-magic';\n\nasync func processImage(path) {\n  let image = await PixelMagic.load(path);\n  image.resize(200, 200).greyscale().save('new-image.png');\n}\n```"
+  },
+  {
+    "name": "log-sphere",
+    "version": "3.3.3",
+    "description": "A versatile and powerful logging utility for Swalang applications.",
+    "author": "DevTools Inc.",
+    "keywords": ["logging", "logger", "debug", "error-handling"],
+    "readme": "# Log Sphere\n\nA universal logging solution.\n\n## Usage\n\n```swalang\nimport logger from 'log-sphere';\n\nlogger.info('User logged in', { userId: 123 });\nlogger.error('Failed to connect to database!');\n```"
+  },
+  {
+    "name": "cli-crafter",
+    "version": "1.6.2",
+    "description": "A framework for building beautiful and interactive command-line interfaces.",
+    "author": "Terminal Tools",
+    "keywords": ["cli", "terminal", "console", "commander", "args"],
+    "readme": "# CLI Crafter\n\nBuild powerful command-line tools with Swalang.\n\n## Usage\n\n```swalang\nimport cli from 'cli-crafter';\n\ncli\n  .command('serve')\n  .description('Start the development server')\n  .action(() => {\n    print('Server starting...');\n  });\n\ncli.parse();\n```"
+  }
+]
