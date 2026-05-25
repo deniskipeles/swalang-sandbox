@@ -1,30 +1,59 @@
-FROM golang:1.23-alpine
+# ==============================================================================
+#  Stage 1: Build the Lightweight Sandbox Go Server
+# ==============================================================================
+FROM golang:1.23-alpine AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Copy source code
+# Copy dependency manifests
+COPY go.mod ./
+RUN go mod download
+
+# Copy the server source code
 COPY . .
 
-# Install unzip & coreutils (for base64 decoding)
-RUN apk add --no-cache unzip coreutils
-
-# Build Go server
-RUN go mod tidy && go build -o server ./cmd/server
-
-# Copy prebuilt swalang binary
-COPY ./swalang /usr/local/bin/swalang
-RUN chmod +x /usr/local/bin/swalang
+# Build the playground server as a statically-linked, lightweight binary
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o swalang-sandbox cmd/server/main.go
 
 
-# Expose the correct port
-EXPOSE 8000
+# ==============================================================================
+#  Stage 2: Final Runtime Image
+# ==============================================================================
+FROM debian:bookworm-slim
 
-# Reconstruct the Astra bundle *safely* at runtime
-ENTRYPOINT ["/bin/sh", "-c", "\
-  echo '🔐 Reconstructing Astra secure bundle...'; \
-  CLEAN=$(printf \"%s\" \"$SECURE_BUNDLE_B64\" | tr -d '\\n\\r '); \
-  printf \"%s\" \"$CLEAN\" | base64 -d > /app/secure-connect-swalang-codebase.zip || { echo '❌ Base64 decode failed'; exit 1; }; \
-  echo '✅ Bundle restored to /app/secure-connect-swalang-codebase.zip'; \
-  exec ./server \
-"]
+# Install standard runtime dependencies (gzip/tar to unpack, libffi8 for FFI routines)
+RUN apt-get update && apt-get install -y \
+    curl \
+    gzip \
+    tar \
+    libffi8 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up the runtime directory
+WORKDIR /app
+
+# Download the latest pre-compiled Swalang Linux binary directly from GitHub.
+# We extract it to /opt/swalang to preserve the relative paths of lib/ and stdlib/,
+# then create a symbolic link to make it globally accessible in /usr/local/bin.
+RUN mkdir -p /opt/swalang && \
+    curl -L -o swalang.tar.gz "https://github.com/deniskipeles/swalang-beta/releases/latest/download/swalang-linux-x86_64.tar.gz" && \
+    tar -xzf swalang.tar.gz -C /opt/swalang --strip-components=1 && \
+    ln -sf /opt/swalang/bin/swalang /usr/local/bin/swalang && \
+    rm swalang.tar.gz
+
+# Copy the compiled sandbox server from Stage 1
+COPY --from=builder /app/swalang-sandbox /usr/local/bin/swalang-sandbox
+
+# Copy the static frontend interface files
+COPY static /app/static
+
+# Configure default environment variables
+ENV PORT=8080
+ENV SWALANG_PATH=/usr/local/bin/swalang
+
+# Expose port
+EXPOSE 8080
+
+# Start the sandbox server
+CMD ["/usr/local/bin/swalang-sandbox"]

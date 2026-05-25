@@ -5,137 +5,148 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Swalang Sandbox</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* Basic scrollbar styling */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #1a202c; }
-        ::-webkit-scrollbar-thumb { background: #4a5568; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #718096; }
-        
-        /* CodeMirror 6 styles */
-        .cm-editor { height: 100%; font-family: monospace; }
-        .cm-scroller { overflow: auto; }
-        html.dark .cm-editor { background-color: #1e1e1e; color: #d4d4d4; }
-        html.dark .cm-gutters { background-color: #1e1e1e; border-right: 1px solid #333; }
-        html.dark .cm-activeLineGutter { background-color: #2a2a2a; }
-        html.dark .cm-activeLine { background-color: #2a2a2a; }
-        html.dark .cm-selectionBackground { background-color: #3a3d41; }
+    
+    <!-- Import Map to guarantee CodeMirror 6 packages share a single @codemirror/state instance -->
+    <script type="importmap">
+        {
+          "imports": {
+            "@codemirror/state": "https://esm.sh/@codemirror/state@6.4.1",
+            "@codemirror/view": "https://esm.sh/@codemirror/view@6.26.3?deps=@codemirror/state@6.4.1",
+            "@codemirror/commands": "https://esm.sh/@codemirror/commands@6.5.0?deps=@codemirror/state@6.4.1",
+            "@codemirror/language": "https://esm.sh/@codemirror/language@6.10.1?deps=@codemirror/state@6.4.1",
+            "@codemirror/lang-python": "https://esm.sh/@codemirror/lang-python@6.1.6?deps=@codemirror/state@6.4.1",
+            "style-mod": "https://esm.sh/style-mod@4.1.2",
+            "w3c-keyname": "https://esm.sh/w3c-keyname@2.2.8",
+            "@lezer/common": "https://esm.sh/@lezer/common@1.2.1",
+            "@lezer/highlight": "https://esm.sh/@lezer/highlight@1.2.0",
+            "@lezer/lr": "https://esm.sh/@lezer/lr@1.4.1",
+            "@lezer/python": "https://esm.sh/@lezer/python@1.1.14"
+          }
+        }
+        </script>
 
-        /* Context Menu */
-        .context-menu {
-            position: absolute;
-            z-index: 1000;
-            width: 140px;
-            background-color: #2d3748; /* dark:bg-gray-700 */
-            border: 1px solid #4a5568; /* dark:border-gray-600 */
-            border-radius: 0.375rem; /* rounded-md */
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
-            padding-top: 4px; padding-bottom: 4px;
-        }
-        .context-menu-item {
-            display: block;
-            width: 100%;
-            padding: 6px 12px;
-            font-size: 0.875rem;
-            text-align: left;
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: #e2e8f0; /* dark:text-gray-200 */
-        }
-        .context-menu-item:hover {
-            background-color: #4a5568; /* dark:bg-gray-600 */
-        }
-        .context-menu-item.delete {
-            color: #f56565; /* text-red-500 */
-        }
+    <style>
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #111827; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+        
+        /* CodeMirror Editor Area */
+        .cm-editor { height: 100%; font-family: 'Source Code Pro', monospace; font-size: 14px; }
+        .cm-scroller { overflow: auto; }
+        html.dark .cm-editor { background-color: #111827; color: #e5e7eb; }
+        html.dark .cm-gutters { background-color: #111827; border-right: 1px solid #1f2937; color: #4b5563; }
+        html.dark .cm-activeLineGutter { background-color: #1f2937; }
+        html.dark .cm-activeLine { background-color: #1f2937/50; }
+        html.dark .cm-selectionBackground { background-color: #374151; }
+        
+        /* Error Overlay */
+        #fatal-error { display: none; }
     </style>
 </head>
 
-<body class="bg-gray-800 text-gray-200 font-sans flex flex-col h-screen overflow-hidden">
+<body class="bg-gray-900 text-gray-100 font-sans flex flex-col h-screen overflow-hidden">
+
+    <!-- Global Error Overlay -->
+    <div id="fatal-error" class="absolute inset-0 bg-red-950 z-50 p-8 overflow-auto">
+        <h1 class="text-2xl font-bold text-white mb-4">Fatal Sandbox Error</h1>
+        <p class="text-red-200 mb-4">The application failed to initialize. Please check the browser console.</p>
+        <pre id="error-message" class="bg-black/50 p-4 rounded text-red-100 whitespace-pre-wrap"></pre>
+    </div>
 
     <!-- App Container -->
     <div id="app-container" class="flex flex-1 overflow-hidden">
         <!-- Desktop Layout -->
         <div class="hidden md:flex flex-1 overflow-hidden">
             <!-- Sidebar -->
-            <aside id="desktop-sidebar" class="w-64 bg-gray-800 flex flex-col transition-all duration-300">
-                <header class="flex justify-between items-center p-2 border-b border-gray-700 flex-shrink-0">
-                    <h2 class="font-semibold text-lg">Explorer</h2>
+            <aside id="desktop-sidebar" class="w-64 bg-gray-950 border-r border-gray-800 flex flex-col transition-all duration-300">
+                <header class="flex justify-between items-center p-3 border-b border-gray-800 flex-shrink-0">
+                    <h2 class="font-bold text-sm text-gray-400 uppercase tracking-wider">Explorer</h2>
                     <div class="flex items-center space-x-1">
-                        <button id="new-file-btn-desktop" title="New File" class="p-1 rounded hover:bg-gray-700">
+                        <button id="new-file-btn-desktop" title="New File" class="p-1 rounded hover:bg-gray-800 text-gray-400 hover:text-white">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
                         </button>
-                        <button id="new-folder-btn-desktop" title="New Folder" class="p-1 rounded hover:bg-gray-700">
+                        <button id="new-folder-btn-desktop" title="New Folder" class="p-1 rounded hover:bg-gray-800 text-gray-400 hover:text-white">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"></path><line x1="12" y1="10" x2="12" y2="16"></line><line x1="9" y1="13" x2="15" y2="13"></line></svg>
                         </button>
                     </div>
                 </header>
-                <div id="tree-view-container" class="flex-1 overflow-y-auto p-1"></div>
+                <div id="tree-view-container" class="flex-1 overflow-y-auto p-2"></div>
             </aside>
+
             <!-- Main Content -->
-            <main class="flex-1 flex flex-col min-w-0">
-                <header class="flex items-center bg-gray-900 border-b border-gray-700 flex-shrink-0">
-                    <button id="sidebar-toggle" title="Toggle Sidebar" class="p-2 hover:bg-gray-700">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            <main class="flex-1 flex flex-col min-w-0 bg-gray-900">
+                <header class="flex items-center bg-gray-950 border-b border-gray-800 h-12 flex-shrink-0">
+                    <button id="sidebar-toggle" title="Toggle Sidebar" class="p-3 hover:bg-gray-800 text-gray-400 hover:text-white">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                     </button>
-                    <div id="editor-tabs-container" class="flex-shrink-0 flex items-center overflow-x-auto"></div>
-                    <div class="flex-grow"></div>
-                    <button id="run-btn-desktop" class="flex items-center space-x-2 mr-2 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-500">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 h-4 w-4"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                        <span>Run</span>
+                    <div id="editor-tabs-container" class="flex-grow flex items-center overflow-x-auto h-full"></div>
+                    <button id="run-btn-desktop" class="flex items-center space-x-2 mr-3 px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white font-semibold text-sm rounded shadow transition-all disabled:opacity-50">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        <span>Run Code</span>
                     </button>
                 </header>
-                <div class="flex-1 flex flex-col overflow-y-auto">
-                    <div id="editor-container" class="flex-grow"></div>
-                    <div id="console-container-desktop" class="h-1/3 max-h-96 border-t border-gray-700"></div>
+                <div class="flex-1 flex flex-col overflow-hidden">
+                    <div id="editor-container" class="flex-1 overflow-hidden"></div>
+                    <div id="console-container-desktop" class="h-1/3 min-h-[150px] border-t border-gray-800"></div>
                 </div>
             </main>
         </div>
 
         <!-- Mobile Layout -->
         <div class="flex md:hidden flex-1 flex-col overflow-hidden">
-            <main id="mobile-main-view" class="flex-1 overflow-y-auto"></main>
-            <nav class="flex items-center bg-gray-900 border-t border-gray-700 flex-shrink-0">
-                <button data-view="explorer" class="mobile-nav-btn flex flex-col items-center justify-center w-full pt-2 pb-1 text-xs text-blue-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 2H8.6c-.4 0-.8.2-1.1.5-.3.3-.5.7-.5 1.1V14c0 .8.6 1.4 1.4 1.4h9.8c.4 0 .8-.2 1.1-.5.3-.3.5-.7.5-1.1V6.5L15.5 2z"></path><path d="M3 7.6v12.8c0 .8.6 1.4 1.4 1.4h9.8"></path><path d="M15 2v5h5"></path></svg>
-                    <span>Explorer</span>
+            <header class="flex items-center justify-between bg-gray-950 border-b border-gray-800 px-4 py-2 flex-shrink-0">
+                <span class="font-bold text-swa-green">Swalang Sandbox</span>
+                <button id="run-btn-mobile" class="flex items-center space-x-1 px-3 py-1 bg-green-600 text-white text-xs font-semibold rounded disabled:opacity-50">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    <span>Run</span>
                 </button>
-                <button data-view="editor" class="mobile-nav-btn flex flex-col items-center justify-center w-full pt-2 pb-1 text-xs text-gray-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
-                    <span>Editor</span>
+            </header>
+            <main id="mobile-main-view" class="flex-1 overflow-hidden relative"></main>
+            <nav class="flex items-center bg-gray-950 border-t border-gray-800 flex-shrink-0 h-14">
+                <button data-view="explorer" class="mobile-nav-btn flex flex-col items-center justify-center w-full text-xs text-blue-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 2H8.6c-.4 0-.8.2-1.1.5-.3.3-.5.7-.5 1.1V14c0 .8.6 1.4 1.4 1.4h9.8c.4 0 .8-.2 1.1-.5.3-.3.5-.7.5-1.1V6.5L15.5 2z"></path><path d="M3 7.6v12.8c0 .8.6 1.4 1.4 1.4h9.8"></path><path d="M15 2v5h5"></path></svg>
+                    <span class="mt-1">Explorer</span>
                 </button>
-                 <button data-view="console" class="mobile-nav-btn flex flex-col items-center justify-center w-full pt-2 pb-1 text-xs text-gray-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
-                    <span>Console</span>
+                <button data-view="editor" class="mobile-nav-btn flex flex-col items-center justify-center w-full text-xs text-gray-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+                    <span class="mt-1">Editor</span>
+                </button>
+                <button data-view="console" class="mobile-nav-btn flex flex-col items-center justify-center w-full text-xs text-gray-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                    <span class="mt-1">Console</span>
                 </button>
             </nav>
         </div>
     </div>
     
-    <!-- CodeMirror 6 Dependencies (via Skypack CDN) -->
+    <!-- ESModule loading using mapped bare specifiers (eliminates duplicates) -->
     <script type="module">
-        import {EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter} from "https://cdn.skypack.dev/@codemirror/view";
-        import {EditorState} from "https://cdn.skypack.dev/@codemirror/state";
-        import {defaultKeymap, history, historyKeymap} from "https://cdn.skypack.dev/@codemirror/commands";
-        import {syntaxHighlighting, defaultHighlightStyle} from "https://cdn.skypack.dev/@codemirror/language";
-        import {javascript} from "https://cdn.skypack.dev/@codemirror/lang-javascript";
+        window.onerror = function (msg, url, lineNo, columnNo, error) {
+            document.getElementById('fatal-error').style.display = 'block';
+            document.getElementById('error-message').innerText = `${msg}\nLocation: ${url}:${lineNo}\n\n${error?.stack || ''}`;
+            return false;
+        };
+
+        // Standardized imports using bare specifiers resolved by the importmap
+        import {EditorView, keymap, highlightActiveLine, lineNumbers, highlightActiveLineGutter} from "@codemirror/view";
+        import {EditorState} from "@codemirror/state";
+        import {defaultKeymap, history, historyKeymap} from "@codemirror/commands";
+        import {syntaxHighlighting, defaultHighlightStyle} from "@codemirror/language";
+        import {python} from "@codemirror/lang-python";
         
         const API_URL = window.location.origin;
 
         const state = {
             fileSystem: [
-              { id: '1', name: 'src', type: 'folder', children: [
-                  { id: '5', name: 'App.tsx', type: 'file', content: 'import React from "react";\n\nfunction App() {\n  return <h1>Welcome!</h1>;\n}\n\nexport default App;' },
-                ],
-              },
-              { id: '9', name: 'package.json', type: 'file', content: '{\n  "name": "my-app",\n  "version": "1.0.0"\n}' },
-              { id: '12', name: 'main.sw', type: 'file', content: 'print("Hello from the Swalang Sandbox!")' },
+              { id: '12', name: 'main.sw', type: 'file', content: '# Swalang Sandbox Entrypoint\nimport oop_demo\nprint("Habari, Dunia! Karibu Swalang!")\n\n# Dynamic standard input testing\njina = input("Tafadhali weka jina lako: ")\nprint(f"Hujambo, {jina}! Karibu kwenye pipeline yetu.")\n\ndef factorial(n):\n    if n == 0:\n        return 1\n    return n * factorial(n - 1)\n\nprint(f"Factorial of 5 is: {factorial(5)}")\n' },
+              { id: '13', name: 'oop_demo.py', type: 'file', content: 'class Mshiriki:\n    def __init__(self, jina):\n        self.jina = jina\n\n    def salimia(self):\n        return f"Mambo! Mimi ni {self.jina}."\n\nmtu = Mshiriki("Amani")\nprint(mtu.salimia())\n' },
+              { id: '14', name: 'README.md', type: 'file', content: '# Swalang Playground\n\nWelcome to the Swalang Sandbox environment.\n\n### Running Code\n- Select your active files using the Explorer sidebar.\n- The execution workflow always initializes from the main file: **`main.sw`**.\n- Edit your code, click **Run Code**, and see the output print in real-time.\n- **Standard Input:** When the script prompts for input, type your value into the input box at the bottom of the console and press **Enter**.' }
             ],
-            openFileIds: new Set(['12']),
+            openFileIds: new Set(['12', '13', '14']),
             activeFileId: '12',
             fileContents: {},
-            consoleLogs: ['Welcome to the Swalang Sandbox!'],
             sessionId: null,
             websocket: null,
             isExecuting: false,
@@ -143,7 +154,7 @@
             editorInstance: null,
         };
 
-        // --- UTILITY FUNCTIONS ---
+        // --- CORE HELPER FUNCTIONS ---
         const findNodeById = (nodes, id) => {
             for (const node of nodes) {
                 if (node.id === id) return node;
@@ -154,16 +165,7 @@
             }
             return null;
         };
-        const findParent = (nodes, childId, parent = null) => {
-            for (const node of nodes) {
-                if (node.id === childId) return parent;
-                if (node.type === 'folder') {
-                    const found = findParent(node.children, childId, node);
-                    if (found) return found;
-                }
-            }
-            return null;
-        }
+
         const flattenFiles = (nodes, path = '') => {
             let files = [];
             for (const node of nodes) {
@@ -177,7 +179,67 @@
             return files;
         };
 
-        // --- RENDER FUNCTIONS ---
+        // --- TREE ACTIONS ---
+        const handleNewFile = () => {
+            const name = prompt("Enter new file name (e.g. script.py):");
+            if (!name || name.trim() === "") return;
+            
+            const newId = Date.now().toString();
+            state.fileSystem.push({
+                id: newId,
+                name: name.trim(),
+                type: 'file',
+                content: '# ' + name.trim() + '\n'
+            });
+            state.fileContents[newId] = '# ' + name.trim() + '\n';
+            handleFileSelect(newId);
+        };
+
+        const handleNewFolder = () => {
+            const name = prompt("Enter new folder name:");
+            if (!name || name.trim() === "") return;
+
+            const newId = Date.now().toString();
+            state.fileSystem.push({
+                id: newId,
+                name: name.trim(),
+                type: 'folder',
+                children: []
+            });
+            renderAll();
+        };
+
+        const handleDeleteNode = (id) => {
+            const node = findNodeById(state.fileSystem, id);
+            if (!node) return;
+            if (!confirm(`Are you sure you want to delete "${node.name}"?`)) return;
+
+            const removeNode = (list, targetId) => {
+                const idx = list.findIndex(n => n.id === targetId);
+                if (idx > -1) {
+                    list.splice(idx, 1);
+                    return true;
+                }
+                for (const n of list) {
+                    if (n.type === 'folder' && removeNode(n.children, targetId)) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            removeNode(state.fileSystem, id);
+            state.openFileIds.delete(id);
+            delete state.fileContents[id];
+
+            if (state.activeFileId === id) {
+                const openIds = Array.from(state.openFileIds);
+                state.activeFileId = openIds.length > 0 ? openIds[openIds.length - 1] : null;
+            }
+            renderAll();
+        };
+
+        // --- RENDER METHODS ---
         const renderAll = () => {
             renderTreeView();
             renderEditorTabs();
@@ -188,21 +250,25 @@
 
         const renderTreeView = () => {
             const createTreeItemHTML = (node, level) => {
-                const isOpen = true; // For simplicity, all folders are open
                 const isSelected = node.id === state.activeFileId;
                 const icon = node.type === 'folder' 
-                    ? `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-1 flex-shrink-0"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"></path></svg>`
-                    : `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-1 flex-shrink-0"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
+                    ? `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mr-2 text-yellow-500"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"></path></svg>`
+                    : `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mr-2 text-blue-400"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
                 
-                const childrenHTML = node.type === 'folder' && isOpen
+                const childrenHTML = node.type === 'folder'
                     ? node.children.map(child => createTreeItemHTML(child, level + 1)).join('')
                     : '';
 
                 return `
-                    <div class="text-sm">
-                        <div data-id="${node.id}" class="tree-item flex items-center cursor-pointer p-1 rounded ${isSelected ? 'bg-blue-500/20' : 'hover:bg-gray-700'}" style="padding-left: ${level * 1}rem;">
-                            ${icon}
-                            <span class="truncate">${node.name}</span>
+                    <div class="text-sm select-none">
+                        <div data-id="${node.id}" class="tree-item group flex items-center justify-between cursor-pointer py-1.5 px-2 rounded ${isSelected ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-900'}" style="padding-left: ${level * 1 + 0.5}rem;">
+                            <div class="flex items-center truncate">
+                                ${icon}
+                                <span class="truncate">${node.name}</span>
+                            </div>
+                            <button data-delete-id="${node.id}" class="delete-node-btn opacity-0 group-hover:opacity-100 p-0.5 rounded text-red-500 hover:bg-gray-800 transition-all" title="Delete">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                            </button>
                         </div>
                         ${childrenHTML}
                     </div>
@@ -225,12 +291,12 @@
 
                  const isActive = id === state.activeFileId;
                  const tab = document.createElement('div');
-                 tab.className = `flex items-center cursor-pointer px-4 py-2 text-sm border-r border-gray-700 ${isActive ? 'bg-gray-800' : 'bg-gray-900 hover:bg-gray-700'}`;
+                 tab.className = `flex items-center cursor-pointer px-4 h-full text-sm border-r border-gray-900 ${isActive ? 'bg-gray-900 text-green-400 border-t-2 border-t-green-500' : 'bg-gray-950 text-gray-500 hover:bg-gray-800'}`;
                  tab.dataset.id = id;
                  tab.innerHTML = `
                     <span class="whitespace-nowrap">${file.name}</span>
-                    <button data-id="${id}" class="tab-close-btn ml-3 p-0.5 rounded-full hover:bg-gray-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <button data-id="${id}" class="tab-close-btn ml-3 p-0.5 rounded-full hover:bg-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
                  `;
                  tabsContainer.appendChild(tab);
@@ -252,8 +318,25 @@
         const renderConsole = () => {
             const consoleEl = document.querySelector('#console-container-desktop .output, #console-container-mobile .output');
             if(consoleEl) {
-                consoleEl.innerHTML = state.consoleLogs.map(log => `<div>${log.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>`).join('');
                 consoleEl.scrollTop = consoleEl.scrollHeight;
+            }
+        };
+
+        const appendToConsole = (text, className = 'text-gray-300') => {
+            const consoleEl = document.querySelector('#console-container-desktop .output, #console-container-mobile .output');
+            if (!consoleEl) return;
+
+            const span = document.createElement('span');
+            span.className = className;
+            span.innerText = text;
+            consoleEl.appendChild(span);
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        };
+
+        const clearConsole = () => {
+            const consoleEl = document.querySelector('#console-container-desktop .output, #console-container-mobile .output');
+            if (consoleEl) {
+                consoleEl.innerHTML = '';
             }
         };
         
@@ -273,7 +356,17 @@
             });
 
             if (state.activeMobileView === 'explorer') {
-                 mainView.innerHTML = `<div id="tree-view-container" class="flex-1 overflow-y-auto p-1"></div>`;
+                 mainView.innerHTML = `
+                    <div class="h-full flex flex-col bg-gray-950">
+                        <header class="flex justify-between items-center p-3 border-b border-gray-800">
+                            <span class="font-bold text-sm text-gray-400 uppercase tracking-wider">Explorer</span>
+                            <div class="flex items-center space-x-2">
+                                <button id="new-file-btn-mobile" class="p-1 text-gray-400 hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg></button>
+                                <button id="new-folder-btn-mobile" class="p-1 text-gray-400 hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0-2 2v18a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"></path><line x1="12" y1="10" x2="12" y2="16"></line><line x1="9" y1="13" x2="15" y2="13"></line></svg></button>
+                            </div>
+                        </header>
+                        <div id="tree-view-container" class="flex-1 overflow-y-auto p-2"></div>
+                    </div>`;
                  renderTreeView();
             } else if (state.activeMobileView === 'editor') {
                  mainView.innerHTML = `<div id="editor-container" class="h-full w-full"></div>`;
@@ -284,17 +377,19 @@
             }
         };
 
-        // --- EVENT HANDLERS & ACTIONS ---
+        // --- ACTIONS ---
         const handleFileSelect = (id) => {
             const node = findNodeById(state.fileSystem, id);
-            if (!node || node.type !== 'file') return;
+            if (!node) return;
 
-            state.openFileIds.add(id);
-            state.activeFileId = id;
-            if (state.activeMobileView === 'explorer') {
-                state.activeMobileView = 'editor';
+            if (node.type === 'file') {
+                state.openFileIds.add(id);
+                state.activeFileId = id;
+                if (state.activeMobileView === 'explorer') {
+                    state.activeMobileView = 'editor';
+                }
+                renderAll();
             }
-            renderAll();
         };
 
         const handleTabClick = (id) => {
@@ -313,14 +408,17 @@
         
         const handleRunCode = async () => {
             if (!state.sessionId || !state.websocket || state.websocket.readyState !== WebSocket.OPEN) {
-                state.consoleLogs.push('Error: Not connected to execution server.');
-                renderConsole();
+                appendToConsole('Error: Not connected to execution server.\n', 'text-red-400');
                 return;
             }
             state.isExecuting = true;
-            document.querySelectorAll('#run-btn-desktop, #run-btn-console').forEach(b => b.disabled = true);
-            state.consoleLogs = ['Uploading files...'];
-            renderConsole();
+            document.querySelectorAll('#run-btn-desktop, #run-btn-mobile').forEach(b => {
+                b.disabled = true;
+                b.classList.add('opacity-50', 'cursor-not-allowed');
+            });
+            
+            clearConsole();
+            appendToConsole('[System] Synchronizing files to Swalang runtime...\n', 'text-gray-500');
 
             try {
                 const filesToUpload = flattenFiles(state.fileSystem);
@@ -333,25 +431,26 @@
                 );
                 await Promise.all(uploadPromises);
 
-                state.consoleLogs.push('Executing code...');
-                renderConsole();
+                appendToConsole('[System] Executing main.sw...\n\n', 'text-gray-500');
                 state.websocket.send(JSON.stringify({ action: 'run' }));
             } catch (error) {
-                 state.consoleLogs.push(`Error: ${error.message}`);
-                 renderConsole();
+                 appendToConsole(`[System Error]: ${error.message}\n`, 'text-red-400');
             } finally {
                 state.isExecuting = false;
-                document.querySelectorAll('#run-btn-desktop, #run-btn-console').forEach(b => b.disabled = false);
+                document.querySelectorAll('#run-btn-desktop, #run-btn-mobile').forEach(b => {
+                    b.disabled = false;
+                    b.classList.remove('opacity-50', 'cursor-not-allowed');
+                });
             }
         };
 
         // --- INITIALIZATION ---
         const initEditor = (containerId) => {
             const container = document.getElementById(containerId);
-            if (!container || container.querySelector('.cm-editor')) return; // Already initialized
+            if (!container || container.querySelector('.cm-editor')) return;
 
             const activeFile = findNodeById(state.fileSystem, state.activeFileId);
-            const content = activeFile ? (state.fileContents[activeFile.id] ?? activeFile.content) : 'Select a file to start editing.';
+            const content = activeFile ? (state.fileContents[activeFile.id] ?? activeFile.content) : '# No active file selected.';
             
             const extensions = [
                 lineNumbers(),
@@ -361,7 +460,7 @@
                 highlightActiveLine(),
                 syntaxHighlighting(defaultHighlightStyle),
                 EditorView.lineWrapping,
-                javascript(), // Default language
+                python(), // Full Python syntax highlighter for Swalang
                 EditorView.updateListener.of((update) => {
                     if (update.docChanged && state.activeFileId) {
                         state.fileContents[state.activeFileId] = update.state.doc.toString();
@@ -384,78 +483,105 @@
             const container = document.getElementById(containerId);
             if (!container) return;
             container.innerHTML = `
-                <div class="h-full w-full bg-gray-900 text-gray-200 flex flex-col font-mono text-sm">
-                    <div class="flex items-center justify-between p-1 border-b border-gray-700 bg-gray-800 flex-shrink-0">
-                        <span class="font-semibold px-2">CONSOLE</span>
+                <div class="h-full w-full bg-gray-950 text-gray-200 flex flex-col font-mono text-sm">
+                    <div class="flex items-center justify-between p-2 border-b border-gray-800 bg-gray-900 flex-shrink-0">
+                        <span class="font-bold text-xs text-gray-400 uppercase tracking-wider">OUTPUT CONSOLE</span>
                         <div class="flex items-center space-x-2">
-                             <button id="run-btn-console" class="flex items-center px-2 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1 h-4 w-4"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                                <span>Run</span>
-                             </button>
-                             <button id="clear-console-btn" title="Clear Console" class="p-1 rounded-full hover:bg-gray-700">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+                             <button id="clear-console-btn" title="Clear Console" class="p-1 rounded text-gray-400 hover:text-white transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
                              </button>
                         </div>
                     </div>
-                    <div class="flex-1 p-2 overflow-y-auto output"></div>
+                    <div class="flex-1 p-3 overflow-y-auto output select-text whitespace-pre-wrap leading-relaxed"></div>
+                    <div class="flex items-center border-t border-gray-800 bg-gray-950 px-3 py-2 flex-shrink-0 h-10">
+                        <span class="text-green-500 mr-2 font-bold font-mono select-none">&gt;</span>
+                        <input id="console-input" type="text" placeholder="Execution is inactive" class="flex-1 bg-transparent text-gray-200 outline-none font-mono text-sm" disabled />
+                    </div>
                 </div>`;
-            renderConsole();
         };
 
         const initApp = async () => {
-            // Setup initial content
-            state.fileSystem.forEach(node => {
-                if (node.type === 'file' && node.content) state.fileContents[node.id] = node.content;
-                if (node.type === 'folder') {
-                    node.children.forEach(child => {
-                        if (child.type === 'file' && child.content) state.fileContents[child.id] = child.content;
-                    })
-                }
-            });
-
-            // Initial render
-            initEditor('editor-container');
-            initConsole('console-container-desktop');
-            renderAll();
-            
-            // Event Listeners
-            document.getElementById('app-container').addEventListener('click', (e) => {
-                const treeItem = e.target.closest('.tree-item');
-                const tabItem = e.target.closest('#editor-tabs-container > div');
-                const tabCloseBtn = e.target.closest('.tab-close-btn');
-                const mobileNavBtn = e.target.closest('.mobile-nav-btn');
-
-                if (tabCloseBtn) {
-                    e.stopPropagation();
-                    handleTabClose(tabCloseBtn.dataset.id);
-                } else if (tabItem) {
-                    handleTabClick(tabItem.dataset.id);
-                } else if (treeItem) {
-                    handleFileSelect(treeItem.dataset.id);
-                } else if (mobileNavBtn) {
-                    state.activeMobileView = mobileNavBtn.dataset.view;
-                    renderMobileView();
-                }
-            });
-
-            document.getElementById('sidebar-toggle').addEventListener('click', () => {
-                document.getElementById('desktop-sidebar').classList.toggle('w-64');
-                document.getElementById('desktop-sidebar').classList.toggle('w-0');
-            });
-
-            document.addEventListener('click', e => {
-                const btn = e.target.closest('#run-btn-desktop, #run-btn-console');
-                if (btn) handleRunCode();
-
-                const clearBtn = e.target.closest('#clear-console-btn');
-                if (clearBtn) {
-                    state.consoleLogs = ['Console cleared.'];
-                    renderConsole();
-                }
-            });
-
-            // API Connection
             try {
+                // Set initial state dictionary
+                state.fileSystem.forEach(node => {
+                    if (node.type === 'file' && node.content) state.fileContents[node.id] = node.content;
+                });
+
+                // Initial render
+                initEditor('editor-container');
+                initConsole('console-container-desktop');
+                renderAll();
+                
+                clearConsole();
+                appendToConsole('[System] Initializing Swalang Playground...\n', 'text-gray-500');
+
+                // Central delegated event listener
+                document.getElementById('app-container').addEventListener('click', (e) => {
+                    const treeItem = e.target.closest('.tree-item');
+                    const deleteBtn = e.target.closest('.delete-node-btn');
+                    const tabItem = e.target.closest('#editor-tabs-container > div');
+                    const tabCloseBtn = e.target.closest('.tab-close-btn');
+                    const mobileNavBtn = e.target.closest('.mobile-nav-btn');
+
+                    if (deleteBtn) {
+                        e.stopPropagation();
+                        handleDeleteNode(deleteBtn.dataset.deleteId);
+                    } else if (tabCloseBtn) {
+                        e.stopPropagation();
+                        handleTabClose(tabCloseBtn.dataset.id);
+                    } else if (tabItem) {
+                        handleTabClick(tabItem.dataset.id);
+                    } else if (treeItem) {
+                        handleFileSelect(treeItem.dataset.id);
+                    } else if (mobileNavBtn) {
+                        state.activeMobileView = mobileNavBtn.dataset.view;
+                        renderMobileView();
+                    }
+                });
+
+                // Dynamic File/Folder addition listeners
+                document.addEventListener('click', e => {
+                    const newFileBtn = e.target.closest('#new-file-btn-desktop, #new-file-btn-mobile');
+                    if (newFileBtn) handleNewFile();
+
+                    const newFolderBtn = e.target.closest('#new-folder-btn-desktop, #new-folder-btn-mobile');
+                    if (newFolderBtn) handleNewFolder();
+
+                    const runBtn = e.target.closest('#run-btn-desktop, #run-btn-mobile');
+                    if (runBtn) handleRunCode();
+
+                    const clearBtn = e.target.closest('#clear-console-btn');
+                    if (clearBtn) {
+                        clearConsole();
+                        appendToConsole('[System] Console cleared.\n', 'text-gray-500');
+                    }
+                });
+
+                // Key listener for standard input
+                document.addEventListener('keydown', e => {
+                    const inputEl = e.target.closest('#console-input');
+                    if (inputEl && e.key === 'Enter') {
+                        const val = inputEl.value;
+                        
+                        // Local Echo to visual output terminal
+                        appendToConsole(`> ${val}\n`, 'text-green-400 font-bold');
+                        
+                        // Send input write packet to Go backend over WebSocket
+                        state.websocket.send(JSON.stringify({
+                            action: "input",
+                            data: val + "\n"
+                        }));
+                        inputEl.value = "";
+                    }
+                });
+
+                document.getElementById('sidebar-toggle').addEventListener('click', () => {
+                    document.getElementById('desktop-sidebar').classList.toggle('w-64');
+                    document.getElementById('desktop-sidebar').classList.toggle('w-0');
+                    document.getElementById('desktop-sidebar').classList.toggle('border-r');
+                });
+
+                // Connection Pipeline
                 const response = await fetch(`${API_URL}/api/session/new`, { method: 'POST' });
                 const data = await response.json();
                 state.sessionId = data.session_id;
@@ -466,22 +592,43 @@
                 
                 state.websocket = new WebSocket(wsUrl);
                 state.websocket.onopen = () => {
-                    state.consoleLogs.push('Connected to execution server.');
-                    renderConsole();
+                    appendToConsole('[System] Connected to execution server. Ready.\n', 'text-gray-500');
                 };
                 state.websocket.onmessage = (event) => {
                     const msg = JSON.parse(event.data);
-                    state.consoleLogs.push(msg.content);
-                    renderConsole();
+                    
+                    // Handle dynamic active execution status changes
+                    if (msg.type === "status") {
+                        const inputEl = document.getElementById('console-input');
+                        if (inputEl) {
+                            if (msg.content === "running") {
+                                inputEl.disabled = false;
+                                inputEl.placeholder = "Weka thamani na ubonyeze Enter...";
+                                inputEl.focus();
+                            } else {
+                                inputEl.disabled = true;
+                                inputEl.placeholder = "Execution inactive.";
+                                inputEl.value = "";
+                            }
+                        }
+                    }
+
+                    if (msg.content && msg.type !== "status") {
+                        let colorClass = 'text-gray-300';
+                        if (msg.type === 'stderr' || msg.type === 'error' || msg.content.startsWith('Traceback')) {
+                            colorClass = 'text-red-400';
+                        }
+                        appendToConsole(msg.content, colorClass);
+                    }
                 };
                 state.websocket.onclose = () => {
-                    state.consoleLogs.push('Disconnected from execution server.');
-                    renderConsole();
+                    appendToConsole('[System] Disconnected from execution server.\n', 'text-gray-500');
                 };
 
             } catch (error) {
-                state.consoleLogs.push(`Error connecting to server: ${error.message}`);
-                renderConsole();
+                console.error("Initialization error:", error);
+                document.getElementById('fatal-error').style.display = 'block';
+                document.getElementById('error-message').innerText = `Initialization Failed: ${error.message}`;
             }
         };
 
